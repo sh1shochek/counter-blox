@@ -5313,6 +5313,7 @@ end
 -- ---------------------------------------------------------------------------
 local function wrapSection(newSection)
 	local S = {}
+	S.Items = newSection.Items  -- проксируем Items для прямого доступа из кода фич (ESP Preview и т.д.)
 
 	function S:Toggle(cfg)
 		cfg = cfg or {}
@@ -6761,7 +6762,7 @@ ui.sections = {
 
 	player_esp = ui.subtabs.visuals_esp:Section({Name = "Players", Side = "Left"}),
 	esp_settings = ui.subtabs.visuals_esp:Section({Name = "Settings", Side = "Right"}),
-	esp_preview = ui.subtabs.visuals_esp:Section({Name = "ESP Preview", Side = "Right"}),
+	-- esp_preview убран из секций меню — теперь это отдельное плавающее окно
 	world_main_changer = ui.subtabs.visuals_lighting:Section({Name = "Lighting", Side = "Left"}),
 	world_misc_changer = ui.subtabs.visuals_lighting:Section({Name = "Misc", Side = "Right"}),
 	visuals_misc = ui.subtabs.visuals_misc:Section({Name = "View", Side = "Left"}),
@@ -7259,54 +7260,130 @@ local thirdperson, thirdperson_key, thirdperson_distance = false, false, 10
 do
 	local espsec = ui.sections.player_esp
 	local setsec = ui.sections.esp_settings
-	local previewsec = ui.sections.esp_preview
 	local mscsec = ui.sections.visuals_misc
 
 	local enemy_sets = cheat.EspLibrary.settings.enemy
 	local enemy_main_sets = cheat.EspLibrary.settings.enemy.main_settings
+
+	-- ========== ESP PREVIEW — отдельное плавающее окно справа от меню ==========
 	do
+		local NL = getgenv().Library  -- NEWLIB (juanitahaxx)
+
+		-- Создаём отдельный floating фрейм в ScreenGui (как Watermark/KeybindList)
+		local previewWindow = NL:Create("Frame", {
+			Name = "\0",
+			Parent = NL.Holder.Instance,
+			AnchorPoint = Vector2.new(0, 0.5),
+			Position = UDim2.new(0.5, 320, 0.5, 0),  -- справа от основного окна (613/2 + зазор)
+			Size = UDim2.new(0, 220, 0, 280),
+			BorderSizePixel = 0,
+			BackgroundColor3 = NL.Theme["Background"]
+		}):AddToTheme({BackgroundColor3 = 'Background'})
+
+		previewWindow:MakeDraggable()
+
+		NL:Create("UIStroke", {
+			Name = "\0",
+			Parent = previewWindow.Instance,
+			ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+			LineJoinMode = Enum.LineJoinMode.Miter,
+			Color = NL.Theme["Outline"]
+		}):AddToTheme({Color = 'Outline'})
+
+		NL:Create("UIStroke", {
+			Name = "\0",
+			Parent = previewWindow.Instance,
+			ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+			LineJoinMode = Enum.LineJoinMode.Miter,
+			Color = NL.Theme["Border"],
+			BorderOffset = UDim.new(0, 1)
+		}):AddToTheme({Color = 'Border'})
+
+		-- Accent liner сверху
+		local previewLiner = NL:Create("Frame", {
+			Name = "\0",
+			Parent = previewWindow.Instance,
+			AnchorPoint = Vector2.new(1, 0),
+			Position = UDim2.new(1, 1, 0, 0),
+			Size = UDim2.new(1, 2, 0, 2),
+			BorderSizePixel = 0,
+			BackgroundColor3 = NL.Theme["Accent"]
+		}):AddToTheme({BackgroundColor3 = 'Accent'})
+
+		-- Заголовок
+		NL:Create("TextLabel", {
+			Name = "\0",
+			FontFace = NL.Font,
+			TextSize = NL.FontSize,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			Parent = previewWindow.Instance,
+			TextColor3 = NL.Theme["Accent"],
+			Text = "ESP Preview",
+			Position = UDim2.new(0, 8, 0, 5),
+			BackgroundTransparency = 1,
+			BorderSizePixel = 0,
+			AutomaticSize = Enum.AutomaticSize.XY
+		}):AddToTheme({TextColor3 = 'Accent'})
+
+		-- Контейнер содержимого
+		local previewContent = Instance.new("Frame")
+		previewContent.Name = "\0"
+		previewContent.Parent = previewWindow.Instance
+		previewContent.BackgroundTransparency = 1
+		previewContent.Position = UDim2.new(0, 8, 0, 22)
+		previewContent.Size = UDim2.new(1, -16, 1, -30)
+		previewContent.BorderSizePixel = 0
+		previewContent.ClipsDescendants = true
+
+		local contentLayout = Instance.new("UIListLayout")
+		contentLayout.Parent = previewContent
+		contentLayout.Padding = UDim.new(0, 8)
+		contentLayout.SortOrder = Enum.SortOrder.LayoutOrder
+
+		-- ---- Preview: Модель игрока ----
 		local preview_dummy = Instance.new("ViewportFrame")
-		preview_dummy.Size = UDim2.new(1, 0, 0, 200)
+		preview_dummy.Size = UDim2.new(1, 0, 1, 0)
 		preview_dummy.BackgroundTransparency = 1
-		preview_dummy.Parent = previewsec.Items["Content"].Instance
-		
+		preview_dummy.LayoutOrder = 1
+		preview_dummy.Parent = previewContent
+
 		local preview_cam = Instance.new("Camera")
 		preview_cam.FieldOfView = 70
 		preview_dummy.CurrentCamera = preview_cam
 		preview_cam.Parent = preview_dummy
-		
+
 		local preview_model = Instance.new("Model", preview_dummy)
-		
+
 		local head = Instance.new("Part", preview_model)
 		head.Size = Vector3.new(1, 1, 1)
 		head.Position = Vector3.new(0, 1.5, 0)
 		head.Color = Color3.fromRGB(163, 162, 165)
-		
+
 		local torso = Instance.new("Part", preview_model)
 		torso.Size = Vector3.new(2, 2, 1)
 		torso.Position = Vector3.new(0, 0, 0)
 		torso.Color = Color3.fromRGB(163, 162, 165)
-		
+
 		local la = Instance.new("Part", preview_model)
 		la.Size = Vector3.new(1, 2, 1)
 		la.Position = Vector3.new(-1.5, 0, 0)
 		la.Color = Color3.fromRGB(163, 162, 165)
-		
+
 		local ra = Instance.new("Part", preview_model)
 		ra.Size = Vector3.new(1, 2, 1)
 		ra.Position = Vector3.new(1.5, 0, 0)
 		ra.Color = Color3.fromRGB(163, 162, 165)
-		
+
 		local ll = Instance.new("Part", preview_model)
 		ll.Size = Vector3.new(1, 2, 1)
 		ll.Position = Vector3.new(-0.5, -2, 0)
 		ll.Color = Color3.fromRGB(163, 162, 165)
-		
+
 		local rl = Instance.new("Part", preview_model)
 		rl.Size = Vector3.new(1, 2, 1)
 		rl.Position = Vector3.new(0.5, -2, 0)
 		rl.Color = Color3.fromRGB(163, 162, 165)
-		
+
 		preview_cam.CFrame = CFrame.new(0, 0, -8, -1, 0, 0, 0, 1, 0, 0, 0, -1)
 
 		local esp_fake_folder = Instance.new("Folder", preview_dummy)
@@ -7348,87 +7425,15 @@ do
 		preview_hp_fill.Position = UDim2.new(0, 0, 0, 0)
 		preview_hp_fill.BackgroundColor3 = Color3.new(0,1,0)
 		preview_hp_fill.BorderSizePixel = 0
-		
+
+		-- ---- Обновление превью ----
 		game:GetService("RunService").RenderStepped:Connect(function()
 			preview_box_holder.Visible = enemy_sets.box
 			preview_box_stroke.Color = enemy_sets.box_color[1]
-			
 			preview_name.Visible = enemy_sets.name
 			preview_name.TextColor3 = enemy_sets.name_color[1]
-
 			preview_distance.Visible = enemy_sets.distance
 			preview_distance.TextColor3 = enemy_sets.dist_color[1]
-			
-			preview_hp_bg.Visible = enemy_sets.health_bar
-			preview_hp_fill.BackgroundColor3 = enemy_sets.health_bar_color[1]
-		end)
-	end
-	do
-		local preview_dummy = Instance.new("ViewportFrame")
-		preview_dummy.Size = UDim2.new(1, 0, 0, 150)
-		preview_dummy.BackgroundTransparency = 1
-		preview_dummy.Parent = previewsec.Items["Content"].Instance
-		
-		local preview_cam = Instance.new("Camera")
-		preview_cam.FieldOfView = 70
-		preview_dummy.CurrentCamera = preview_cam
-		preview_cam.Parent = preview_dummy
-		
-		-- just a basic block model for now to test, rbxassetid might fail
-		local part = Instance.new("Part")
-		part.Size = Vector3.new(4, 5, 2)
-		part.Position = Vector3.new(0, 0, 0)
-		part.Parent = preview_dummy
-		
-		preview_cam.CFrame = CFrame.new(0, 0, 8, 1, 0, 0, 0, 1, 0, 0, 0, 1)
-
-		-- Fake ESP Elements
-		local preview_box = Instance.new("Frame", preview_dummy)
-		preview_box.Size = UDim2.new(0, 80, 0, 100)
-		preview_box.Position = UDim2.new(0.5, -40, 0.5, -50)
-		preview_box.BackgroundTransparency = 1
-		local preview_box_stroke = Instance.new("UIStroke", preview_box)
-		preview_box_stroke.Color = Color3.new(1,1,1)
-
-		local preview_name = Instance.new("TextLabel", preview_dummy)
-		preview_name.Size = UDim2.new(0, 80, 0, 15)
-		preview_name.Position = UDim2.new(0.5, -40, 0.5, -65)
-		preview_name.BackgroundTransparency = 1
-		preview_name.Text = "Name"
-		preview_name.TextColor3 = Color3.new(1,1,1)
-		preview_name.TextSize = 12
-		preview_name.Font = Enum.Font.Code
-
-		local preview_distance = Instance.new("TextLabel", preview_dummy)
-		preview_distance.Size = UDim2.new(0, 80, 0, 15)
-		preview_distance.Position = UDim2.new(0.5, -40, 0.5, 50)
-		preview_distance.BackgroundTransparency = 1
-		preview_distance.Text = "10m"
-		preview_distance.TextColor3 = Color3.new(1,1,1)
-		preview_distance.TextSize = 12
-		preview_distance.Font = Enum.Font.Code
-
-		local preview_hp_bg = Instance.new("Frame", preview_dummy)
-		preview_hp_bg.Size = UDim2.new(0, 2, 0, 100)
-		preview_hp_bg.Position = UDim2.new(0.5, -45, 0.5, -50)
-		preview_hp_bg.BackgroundColor3 = Color3.new(0,0,0)
-		preview_hp_bg.BorderSizePixel = 0
-		local preview_hp_fill = Instance.new("Frame", preview_hp_bg)
-		preview_hp_fill.Size = UDim2.new(1, 0, 1, 0)
-		preview_hp_fill.Position = UDim2.new(0, 0, 0, 0)
-		preview_hp_fill.BackgroundColor3 = Color3.new(0,1,0)
-		preview_hp_fill.BorderSizePixel = 0
-		
-		game:GetService("RunService").RenderStepped:Connect(function()
-			preview_box.Visible = enemy_sets.box
-			preview_box_stroke.Color = enemy_sets.box_color[1]
-			
-			preview_name.Visible = enemy_sets.name
-			preview_name.TextColor3 = enemy_sets.name_color[1]
-
-			preview_distance.Visible = enemy_sets.distance
-			preview_distance.TextColor3 = enemy_sets.dist_color[1]
-			
 			preview_hp_bg.Visible = enemy_sets.health_bar
 			preview_hp_fill.BackgroundColor3 = enemy_sets.health_bar_color[1]
 		end)
