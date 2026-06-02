@@ -5777,6 +5777,11 @@ LPH_NO_VIRTUALIZE(function()
 				weapon = false,
 				skeleton = false,
 				flags = false,
+				
+				arrow = false,
+				arrow_max_dist = 100,
+				arrow_radius = 200,
+				arrow_elements = {},
 
 				box_color = { Color3.new(1, 1, 1), Color3.new(1, 1, 1), 0 },
 				health_bar_color = { Color3.new(1, 1, 1), Color3.new(1, 1, 1) },
@@ -5906,6 +5911,108 @@ LPH_NO_VIRTUALIZE(function()
 			Position = UDim2.fromScale(0, 0),
 			BackgroundTransparency = 1,
 			Visible = false
+		}, obj)
+
+		local arrow_holder = esp.create_obj("Frame", {
+			Parent = container,
+			ZIndex = 2,
+			BorderSizePixel = 0,
+			Size = UDim2.fromScale(0, 0),
+			Position = UDim2.fromScale(0, 0),
+			BackgroundTransparency = 1,
+			Visible = false
+		}, obj)
+		local arrow_label = esp.create_obj("TextLabel", {
+			Parent = arrow_holder,
+			BackgroundTransparency = 1,
+			Text = "▼",
+			TextColor3 = Color3.new(1, 1, 1),
+			TextSize = 25,
+			Font = Enum.Font.SourceSansBold,
+			Size = UDim2.new(0, 30, 0, 30),
+			Position = UDim2.new(0.5, -15, 0.5, -15),
+			TextStrokeTransparency = 0,
+		}, obj)
+		local arrow_list = esp.create_obj("Frame", {
+			Parent = arrow_holder,
+			BackgroundTransparency = 1,
+			Size = UDim2.new(0, 100, 0, 50),
+			Position = UDim2.new(0.5, -50, 1, 10),
+		}, obj)
+		esp.create_obj("UIListLayout", {
+			Parent = arrow_list,
+			SortOrder = Enum.SortOrder.LayoutOrder,
+			HorizontalAlignment = Enum.HorizontalAlignment.Center,
+		}, obj)
+		local arrow_name = esp.create_obj("TextLabel", {
+			Parent = arrow_list,
+			BackgroundTransparency = 1,
+			Size = UDim2.new(1, 0, 0, 14),
+			Font = Enum.Font.Code,
+			TextSize = 13,
+			TextColor3 = Color3.new(1, 1, 1),
+			TextStrokeTransparency = 0,
+			TextXAlignment = Enum.TextXAlignment.Center,
+			Visible = false,
+			LayoutOrder = 1
+		}, obj)
+		local arrow_distance_lbl = esp.create_obj("TextLabel", {
+			Parent = arrow_list,
+			BackgroundTransparency = 1,
+			Size = UDim2.new(1, 0, 0, 14),
+			Font = Enum.Font.Code,
+			TextSize = 13,
+			TextColor3 = Color3.new(1, 1, 1),
+			TextStrokeTransparency = 0,
+			TextXAlignment = Enum.TextXAlignment.Center,
+			Visible = false,
+			LayoutOrder = 2
+		}, obj)
+		local arrow_health_lbl = esp.create_obj("TextLabel", {
+			Parent = arrow_list,
+			BackgroundTransparency = 1,
+			Size = UDim2.new(1, 0, 0, 14),
+			Font = Enum.Font.Code,
+			TextSize = 13,
+			TextColor3 = Color3.new(1, 1, 1),
+			TextStrokeTransparency = 0,
+			TextXAlignment = Enum.TextXAlignment.Center,
+			Visible = false,
+			LayoutOrder = 3
+		}, obj)
+		local arrow_box_lbl = esp.create_obj("Frame", {
+			Parent = arrow_list,
+			Size = UDim2.new(0, 10, 0, 14),
+			BackgroundColor3 = Color3.new(1, 1, 1),
+			BackgroundTransparency = 1,
+			Visible = false,
+			LayoutOrder = 4
+		}, obj)
+		local arrow_box_inner_frame = esp.create_obj("Frame", {
+			Parent = arrow_box_lbl,
+			Size = UDim2.new(0, 10, 0, 10),
+			Position = UDim2.new(0.5, -5, 0.5, -5),
+			BackgroundColor3 = Color3.new(1, 1, 1),
+			BackgroundTransparency = 1,
+		}, obj)
+		local arrow_box_inner = esp.create_obj("UIStroke", {
+			Parent = arrow_box_inner_frame,
+			ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+			LineJoinMode = Enum.LineJoinMode.Miter,
+			Thickness = 1,
+			Color = Color3.new(1, 1, 1)
+		}, obj)
+		local arrow_item_lbl = esp.create_obj("TextLabel", {
+			Parent = arrow_list,
+			BackgroundTransparency = 1,
+			Size = UDim2.new(1, 0, 0, 14),
+			Font = Enum.Font.Code,
+			TextSize = 13,
+			TextColor3 = Color3.new(1, 1, 1),
+			TextStrokeTransparency = 0,
+			TextXAlignment = Enum.TextXAlignment.Center,
+			Visible = false,
+			LayoutOrder = 5
 		}, obj)
 		local box_holder = esp.create_obj("Frame", {
 			Parent = main_holder,
@@ -6218,6 +6325,9 @@ LPH_NO_VIRTUALIZE(function()
 			setvis_cache = bool
 
 			main_holder.Visible = bool
+			if not bool then
+				arrow_holder.Visible = false
+			end
 			for part, cham in chams_table do
 				cham.cham.Adornee = bool and settings.chams and part or nil
 			end
@@ -6293,7 +6403,57 @@ LPH_NO_VIRTUALIZE(function()
 			local _, onScreen = _WorldToViewportPoint(Camera, root.Position)
 
 			if not onScreen then
-				return plr:togglevis(false)
+				if settings.arrow and humanoid_distance <= settings.arrow_max_dist then
+					main_holder.Visible = false
+					for part, cham in chams_table do cham.cham.Adornee = nil end
+					setvis_cache = nil -- reset cache to allow normal togglevis later
+					arrow_holder.Visible = true
+					
+					local camCFrame = Camera.CFrame
+					local objSpace = camCFrame:PointToObjectSpace(root.Position)
+					local angle = math.atan2(objSpace.X, -objSpace.Y)
+					if objSpace.Z > 0 then
+						angle = angle + math.pi
+					end
+					
+					local screenCenter = Camera.ViewportSize / 2
+					local radius = settings.arrow_radius
+					local x = screenCenter.X + math.sin(angle) * radius
+					local y = screenCenter.Y - math.cos(angle) * radius
+					
+					arrow_holder.Position = UDim2.new(0, x, 0, y)
+					arrow_label.Rotation = math.deg(angle) + 180
+					
+					local elems = settings.arrow_elements
+					local show_name = table.find(elems, "name")
+					local show_health = table.find(elems, "health")
+					local show_dist = table.find(elems, "distance")
+					local show_box = table.find(elems, "box")
+					local show_item = table.find(elems, "item")
+					
+					arrow_name.Visible = show_name ~= nil
+					if arrow_name.Visible then arrow_name.Text = plr_instance.Name end
+					
+					arrow_distance_lbl.Visible = show_dist ~= nil
+					if arrow_distance_lbl.Visible then arrow_distance_lbl.Text = math.floor(humanoid_distance) .. "m" end
+					
+					arrow_health_lbl.Visible = show_health ~= nil
+					if arrow_health_lbl.Visible and humanoid then arrow_health_lbl.Text = "[" .. math.floor(humanoid_health) .. "]" end
+					
+					arrow_box_lbl.Visible = show_box ~= nil
+					if arrow_box_lbl.Visible then arrow_box_inner.Color = settings.box_color[1] end
+					
+					arrow_item_lbl.Visible = show_item ~= nil
+					if arrow_item_lbl.Visible then
+						local tool = character:FindFirstChildOfClass("Tool")
+						arrow_item_lbl.Text = tool and tool.Name or "None"
+					end
+					return
+				else
+					return plr:togglevis(false)
+				end
+			else
+				arrow_holder.Visible = false
 			end
 
 			local corners, cache = {}, {}
@@ -6601,6 +6761,7 @@ ui.sections = {
 
 	player_esp = ui.subtabs.visuals_esp:Section({Name = "Players", Side = "Left"}),
 	esp_settings = ui.subtabs.visuals_esp:Section({Name = "Settings", Side = "Right"}),
+	esp_preview = ui.subtabs.visuals_esp:Section({Name = "ESP Preview", Side = "Right"}),
 	world_main_changer = ui.subtabs.visuals_lighting:Section({Name = "Lighting", Side = "Left"}),
 	world_misc_changer = ui.subtabs.visuals_lighting:Section({Name = "Misc", Side = "Right"}),
 	visuals_misc = ui.subtabs.visuals_misc:Section({Name = "View", Side = "Left"}),
@@ -7098,10 +7259,180 @@ local thirdperson, thirdperson_key, thirdperson_distance = false, false, 10
 do
 	local espsec = ui.sections.player_esp
 	local setsec = ui.sections.esp_settings
+	local previewsec = ui.sections.esp_preview
 	local mscsec = ui.sections.visuals_misc
 
 	local enemy_sets = cheat.EspLibrary.settings.enemy
 	local enemy_main_sets = cheat.EspLibrary.settings.enemy.main_settings
+	do
+		local preview_dummy = Instance.new("ViewportFrame")
+		preview_dummy.Size = UDim2.new(1, 0, 0, 200)
+		preview_dummy.BackgroundTransparency = 1
+		preview_dummy.Parent = previewsec.Items["Content"].Instance
+		
+		local preview_cam = Instance.new("Camera")
+		preview_cam.FieldOfView = 70
+		preview_dummy.CurrentCamera = preview_cam
+		preview_cam.Parent = preview_dummy
+		
+		local preview_model = Instance.new("Model", preview_dummy)
+		
+		local head = Instance.new("Part", preview_model)
+		head.Size = Vector3.new(1, 1, 1)
+		head.Position = Vector3.new(0, 1.5, 0)
+		head.Color = Color3.fromRGB(163, 162, 165)
+		
+		local torso = Instance.new("Part", preview_model)
+		torso.Size = Vector3.new(2, 2, 1)
+		torso.Position = Vector3.new(0, 0, 0)
+		torso.Color = Color3.fromRGB(163, 162, 165)
+		
+		local la = Instance.new("Part", preview_model)
+		la.Size = Vector3.new(1, 2, 1)
+		la.Position = Vector3.new(-1.5, 0, 0)
+		la.Color = Color3.fromRGB(163, 162, 165)
+		
+		local ra = Instance.new("Part", preview_model)
+		ra.Size = Vector3.new(1, 2, 1)
+		ra.Position = Vector3.new(1.5, 0, 0)
+		ra.Color = Color3.fromRGB(163, 162, 165)
+		
+		local ll = Instance.new("Part", preview_model)
+		ll.Size = Vector3.new(1, 2, 1)
+		ll.Position = Vector3.new(-0.5, -2, 0)
+		ll.Color = Color3.fromRGB(163, 162, 165)
+		
+		local rl = Instance.new("Part", preview_model)
+		rl.Size = Vector3.new(1, 2, 1)
+		rl.Position = Vector3.new(0.5, -2, 0)
+		rl.Color = Color3.fromRGB(163, 162, 165)
+		
+		preview_cam.CFrame = CFrame.new(0, 0, -8, -1, 0, 0, 0, 1, 0, 0, 0, -1)
+
+		local esp_fake_folder = Instance.new("Folder", preview_dummy)
+
+		local preview_box_holder = Instance.new("Frame", esp_fake_folder)
+		preview_box_holder.Size = UDim2.new(0, 75, 0, 105)
+		preview_box_holder.Position = UDim2.new(0.5, -37.5, 0.5, -52.5)
+		preview_box_holder.BackgroundTransparency = 1
+		local preview_box_stroke = Instance.new("UIStroke", preview_box_holder)
+		preview_box_stroke.Color = Color3.new(1,1,1)
+
+		local preview_name = Instance.new("TextLabel", esp_fake_folder)
+		preview_name.Size = UDim2.new(0, 80, 0, 15)
+		preview_name.Position = UDim2.new(0.5, -40, 0.5, -70)
+		preview_name.BackgroundTransparency = 1
+		preview_name.Text = "Player"
+		preview_name.TextColor3 = Color3.new(1,1,1)
+		preview_name.TextSize = 12
+		preview_name.Font = Enum.Font.Code
+		preview_name.TextStrokeTransparency = 0
+
+		local preview_distance = Instance.new("TextLabel", esp_fake_folder)
+		preview_distance.Size = UDim2.new(0, 80, 0, 15)
+		preview_distance.Position = UDim2.new(0.5, -40, 0.5, 55)
+		preview_distance.BackgroundTransparency = 1
+		preview_distance.Text = "10m"
+		preview_distance.TextColor3 = Color3.new(1,1,1)
+		preview_distance.TextSize = 12
+		preview_distance.Font = Enum.Font.Code
+		preview_distance.TextStrokeTransparency = 0
+
+		local preview_hp_bg = Instance.new("Frame", esp_fake_folder)
+		preview_hp_bg.Size = UDim2.new(0, 2, 0, 105)
+		preview_hp_bg.Position = UDim2.new(0.5, -42, 0.5, -52.5)
+		preview_hp_bg.BackgroundColor3 = Color3.new(0,0,0)
+		preview_hp_bg.BorderSizePixel = 0
+		local preview_hp_fill = Instance.new("Frame", preview_hp_bg)
+		preview_hp_fill.Size = UDim2.new(1, 0, 1, 0)
+		preview_hp_fill.Position = UDim2.new(0, 0, 0, 0)
+		preview_hp_fill.BackgroundColor3 = Color3.new(0,1,0)
+		preview_hp_fill.BorderSizePixel = 0
+		
+		game:GetService("RunService").RenderStepped:Connect(function()
+			preview_box_holder.Visible = enemy_sets.box
+			preview_box_stroke.Color = enemy_sets.box_color[1]
+			
+			preview_name.Visible = enemy_sets.name
+			preview_name.TextColor3 = enemy_sets.name_color[1]
+
+			preview_distance.Visible = enemy_sets.distance
+			preview_distance.TextColor3 = enemy_sets.dist_color[1]
+			
+			preview_hp_bg.Visible = enemy_sets.health_bar
+			preview_hp_fill.BackgroundColor3 = enemy_sets.health_bar_color[1]
+		end)
+	end
+	do
+		local preview_dummy = Instance.new("ViewportFrame")
+		preview_dummy.Size = UDim2.new(1, 0, 0, 150)
+		preview_dummy.BackgroundTransparency = 1
+		preview_dummy.Parent = previewsec.Items["Content"].Instance
+		
+		local preview_cam = Instance.new("Camera")
+		preview_cam.FieldOfView = 70
+		preview_dummy.CurrentCamera = preview_cam
+		preview_cam.Parent = preview_dummy
+		
+		-- just a basic block model for now to test, rbxassetid might fail
+		local part = Instance.new("Part")
+		part.Size = Vector3.new(4, 5, 2)
+		part.Position = Vector3.new(0, 0, 0)
+		part.Parent = preview_dummy
+		
+		preview_cam.CFrame = CFrame.new(0, 0, 8, 1, 0, 0, 0, 1, 0, 0, 0, 1)
+
+		-- Fake ESP Elements
+		local preview_box = Instance.new("Frame", preview_dummy)
+		preview_box.Size = UDim2.new(0, 80, 0, 100)
+		preview_box.Position = UDim2.new(0.5, -40, 0.5, -50)
+		preview_box.BackgroundTransparency = 1
+		local preview_box_stroke = Instance.new("UIStroke", preview_box)
+		preview_box_stroke.Color = Color3.new(1,1,1)
+
+		local preview_name = Instance.new("TextLabel", preview_dummy)
+		preview_name.Size = UDim2.new(0, 80, 0, 15)
+		preview_name.Position = UDim2.new(0.5, -40, 0.5, -65)
+		preview_name.BackgroundTransparency = 1
+		preview_name.Text = "Name"
+		preview_name.TextColor3 = Color3.new(1,1,1)
+		preview_name.TextSize = 12
+		preview_name.Font = Enum.Font.Code
+
+		local preview_distance = Instance.new("TextLabel", preview_dummy)
+		preview_distance.Size = UDim2.new(0, 80, 0, 15)
+		preview_distance.Position = UDim2.new(0.5, -40, 0.5, 50)
+		preview_distance.BackgroundTransparency = 1
+		preview_distance.Text = "10m"
+		preview_distance.TextColor3 = Color3.new(1,1,1)
+		preview_distance.TextSize = 12
+		preview_distance.Font = Enum.Font.Code
+
+		local preview_hp_bg = Instance.new("Frame", preview_dummy)
+		preview_hp_bg.Size = UDim2.new(0, 2, 0, 100)
+		preview_hp_bg.Position = UDim2.new(0.5, -45, 0.5, -50)
+		preview_hp_bg.BackgroundColor3 = Color3.new(0,0,0)
+		preview_hp_bg.BorderSizePixel = 0
+		local preview_hp_fill = Instance.new("Frame", preview_hp_bg)
+		preview_hp_fill.Size = UDim2.new(1, 0, 1, 0)
+		preview_hp_fill.Position = UDim2.new(0, 0, 0, 0)
+		preview_hp_fill.BackgroundColor3 = Color3.new(0,1,0)
+		preview_hp_fill.BorderSizePixel = 0
+		
+		game:GetService("RunService").RenderStepped:Connect(function()
+			preview_box.Visible = enemy_sets.box
+			preview_box_stroke.Color = enemy_sets.box_color[1]
+			
+			preview_name.Visible = enemy_sets.name
+			preview_name.TextColor3 = enemy_sets.name_color[1]
+
+			preview_distance.Visible = enemy_sets.distance
+			preview_distance.TextColor3 = enemy_sets.dist_color[1]
+			
+			preview_hp_bg.Visible = enemy_sets.health_bar
+			preview_hp_fill.BackgroundColor3 = enemy_sets.health_bar_color[1]
+		end)
+	end
 
 	
 	do
@@ -7256,6 +7587,30 @@ do
 			enemy_main_sets.holder_speed = int * 18
 			cheat.EspLibrary.icaca()
 		end})
+
+		setsec:Toggle({Name = "Arrow ESP", Value = false, Flag = "esp_arrow", Callback = function(bool)
+			enemy_sets.arrow = bool
+			cheat.EspLibrary.icaca()
+		end})
+		setsec:Slider({Name = "Arrow Max Distance", Min = 0, Max = 1000, Float = 1, Value = 100, Flag = "esp_arrow_max_dist", Callback = function(int)
+			enemy_sets.arrow_max_dist = int
+			cheat.EspLibrary.icaca()
+		end})
+		setsec:Slider({Name = "Arrow Radius", Min = 50, Max = 1000, Float = 1, Value = 200, Flag = "esp_arrow_radius", Callback = function(int)
+			enemy_sets.arrow_radius = int
+			cheat.EspLibrary.icaca()
+		end})
+		setsec:Dropdown({
+			Name = "arrow_elements",
+			Values = {"health", "name", "distance", "box", "item"},
+			Value = {},
+			Multi = true,
+			Flag = "esp_arrow_elements",
+			Callback = function(val)
+				enemy_sets.arrow_elements = val
+				cheat.EspLibrary.icaca()
+			end
+		})
 	end
 	do
 		local old_fov = Camera.FieldOfView
