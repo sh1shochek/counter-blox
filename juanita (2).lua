@@ -432,8 +432,8 @@ local Library = {
                 }
             }
 
-            writefile(`{Library.Directory .. Library.Folders.Assets}/{Name}.font`, HttpService:JSONEncode(Data))
-            return Font.new(getcustomasset(`{Library.Directory .. Library.Folders.Assets}/{Name}.font`))
+            writefile((Library.Directory .. Library.Folders.Assets .. "/" .. Name .. ".font"), HttpService:JSONEncode(Data))
+            return Font.new(getcustomasset(Library.Directory .. Library.Folders.Assets .. "/" .. Name .. ".font"))
         end
 
         Library.Font = CustomFont:New("TahomaXP", 400, "Regular", {
@@ -5314,6 +5314,7 @@ end
 local function wrapSection(newSection)
 	local S = {}
 	S.Items = newSection.Items  -- проксируем Items для прямого доступа из кода фич (ESP Preview и т.д.)
+	S._section = newSection     -- FIX: сохраняем ссылку чтобы код мог делать ._section.Page
 
 	function S:Toggle(cfg)
 		cfg = cfg or {}
@@ -5918,8 +5919,9 @@ LPH_NO_VIRTUALIZE(function()
 			Parent = container,
 			ZIndex = 2,
 			BorderSizePixel = 0,
-			Size = UDim2.fromScale(0, 0),
-			Position = UDim2.fromScale(0, 0),
+			Size = UDim2.new(0, 30, 0, 30),
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromScale(0.5, 0.5),
 			BackgroundTransparency = 1,
 			Visible = false
 		}, obj)
@@ -5930,15 +5932,20 @@ LPH_NO_VIRTUALIZE(function()
 			TextColor3 = Color3.new(1, 1, 1),
 			TextSize = 25,
 			Font = Enum.Font.SourceSansBold,
-			Size = UDim2.new(0, 30, 0, 30),
-			Position = UDim2.new(0.5, -15, 0.5, -15),
+			Size = UDim2.new(1, 0, 1, 0),
+			Position = UDim2.new(0, 0, 0, 0),
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			TextXAlignment = Enum.TextXAlignment.Center,
+			TextYAlignment = Enum.TextYAlignment.Center,
 			TextStrokeTransparency = 0,
 		}, obj)
 		local arrow_list = esp.create_obj("Frame", {
 			Parent = arrow_holder,
 			BackgroundTransparency = 1,
-			Size = UDim2.new(0, 100, 0, 50),
-			Position = UDim2.new(0.5, -50, 1, 10),
+			Size = UDim2.new(0, 120, 0, 80),
+			AnchorPoint = Vector2.new(0.5, 0),
+			Position = UDim2.new(0.5, 0, 1, 4),
+			AutomaticSize = Enum.AutomaticSize.Y,
 		}, obj)
 		esp.create_obj("UIListLayout", {
 			Parent = arrow_list,
@@ -6422,8 +6429,8 @@ LPH_NO_VIRTUALIZE(function()
 					local x = screenCenter.X + math.sin(angle) * radius
 					local y = screenCenter.Y - math.cos(angle) * radius
 					
-					arrow_holder.Position = UDim2.new(0, x - gui_inset.X, 0, y - gui_inset.Y)
-					arrow_label.Rotation = math.deg(angle) + 180
+					arrow_holder.Position = UDim2.new(0, x, 0, y - gui_inset.Y)
+					arrow_label.Rotation = math.deg(angle)
 					
 					local elems = settings.arrow_elements
 					local show_name = table.find(elems, "name")
@@ -6654,7 +6661,7 @@ LPH_NO_VIRTUALIZE(function()
 		}
 
 		indicator.drawing = cheat.utility.new_drawing("Text", { Visible = false })
-		indicator.text = `indicator {tostring(indicator)}`
+		indicator.text = "indicator " .. tostring(indicator)
 
 		indicatorlib.indicators[indicator] = indicator
 
@@ -7265,313 +7272,6 @@ do
 	local enemy_sets = cheat.EspLibrary.settings.enemy
 	local enemy_main_sets = cheat.EspLibrary.settings.enemy.main_settings
 
-	-- ========== ESP PREVIEW — прикреплено к меню, показывается только на вкладке Visuals ==========
-	do
-		local NL = getgenv().Library  -- NEWLIB (juanitahaxx)
-		local visualsPage = ui.sections.player_esp._section.Page  -- Page вкладки Visuals
-
-		-- Крепим к главному окну меню (не отдельный floating)
-		local previewWindow = NL:Create("Frame", {
-			Name = "\0",
-			Parent = ui.window._new.Items["Holder"].Instance,
-			AnchorPoint = Vector2.new(0, 0),
-			Position = UDim2.new(1, 6, 0, 0),
-			Size = UDim2.new(0, 220, 1, -4),
-			BorderSizePixel = 0,
-			BackgroundColor3 = NL.Theme["Background"]
-		}):AddToTheme({BackgroundColor3 = 'Background'})
-
-		-- Рамка
-		NL:Create("UIStroke", {
-			Name = "\0",
-			Parent = previewWindow.Instance,
-			ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
-			LineJoinMode = Enum.LineJoinMode.Miter,
-			Color = NL.Theme["Outline"]
-		}):AddToTheme({Color = 'Outline'})
-
-		NL:Create("UIStroke", {
-			Name = "\0",
-			Parent = previewWindow.Instance,
-			ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
-			LineJoinMode = Enum.LineJoinMode.Miter,
-			Color = NL.Theme["Border"],
-			BorderOffset = UDim.new(0, 1)
-		}):AddToTheme({Color = 'Border'})
-
-		-- Accent liner сверху
-		local previewLiner = NL:Create("Frame", {
-			Name = "\0",
-			Parent = previewWindow.Instance,
-			AnchorPoint = Vector2.new(1, 0),
-			Position = UDim2.new(1, 1, 0, 0),
-			Size = UDim2.new(1, 2, 0, 2),
-			BorderSizePixel = 0,
-			BackgroundColor3 = NL.Theme["Accent"]
-		}):AddToTheme({BackgroundColor3 = 'Accent'})
-
-		-- Заголовок
-		NL:Create("TextLabel", {
-			Name = "\0",
-			FontFace = NL.Font,
-			TextSize = NL.FontSize,
-			TextXAlignment = Enum.TextXAlignment.Left,
-			Parent = previewWindow.Instance,
-			TextColor3 = NL.Theme["Accent"],
-			Text = "ESP Preview",
-			Position = UDim2.new(0, 8, 0, 5),
-			BackgroundTransparency = 1,
-			BorderSizePixel = 0,
-			AutomaticSize = Enum.AutomaticSize.XY
-		}):AddToTheme({TextColor3 = 'Accent'})
-
-		-- Контейнер содержимого
-		local previewContent = Instance.new("Frame")
-		previewContent.Name = "\0"
-		previewContent.Parent = previewWindow.Instance
-		previewContent.BackgroundTransparency = 1
-		previewContent.Position = UDim2.new(0, 8, 0, 22)
-		previewContent.Size = UDim2.new(1, -16, 1, -30)
-		previewContent.BorderSizePixel = 0
-		previewContent.ClipsDescendants = true
-
-		local contentLayout = Instance.new("UIListLayout")
-		contentLayout.Parent = previewContent
-		contentLayout.Padding = UDim.new(0, 8)
-		contentLayout.SortOrder = Enum.SortOrder.LayoutOrder
-
-		-- ---- Preview: Модель игрока ----
-		local preview_dummy = Instance.new("ViewportFrame")
-		preview_dummy.Size = UDim2.new(1, 0, 1, 0)
-		preview_dummy.BackgroundTransparency = 1
-		preview_dummy.LayoutOrder = 1
-		preview_dummy.Parent = previewContent
-
-		local preview_cam = Instance.new("Camera")
-		preview_cam.FieldOfView = 55  -- шире угол чтобы модель помещалась
-		preview_dummy.CurrentCamera = preview_cam
-		preview_cam.Parent = preview_dummy
-
-		local preview_model = Instance.new("Model", preview_dummy)
-
-		local head = Instance.new("Part", preview_model)
-		head.Size = Vector3.new(1, 1, 1)
-		head.Position = Vector3.new(0, 1.5, 0)
-		head.Color = Color3.fromRGB(163, 162, 165)
-
-		local torso = Instance.new("Part", preview_model)
-		torso.Size = Vector3.new(2, 2, 1)
-		torso.Position = Vector3.new(0, 0, 0)
-		torso.Color = Color3.fromRGB(163, 162, 165)
-
-		local la = Instance.new("Part", preview_model)
-		la.Size = Vector3.new(1, 2, 1)
-		la.Position = Vector3.new(-1.5, 0, 0)
-		la.Color = Color3.fromRGB(163, 162, 165)
-
-		local ra = Instance.new("Part", preview_model)
-		ra.Size = Vector3.new(1, 2, 1)
-		ra.Position = Vector3.new(1.5, 0, 0)
-		ra.Color = Color3.fromRGB(163, 162, 165)
-
-		local ll = Instance.new("Part", preview_model)
-		ll.Size = Vector3.new(1, 2, 1)
-		ll.Position = Vector3.new(-0.5, -2, 0)
-		ll.Color = Color3.fromRGB(163, 162, 165)
-
-		local rl = Instance.new("Part", preview_model)
-		rl.Size = Vector3.new(1, 2, 1)
-		rl.Position = Vector3.new(0.5, -2, 0)
-		rl.Color = Color3.fromRGB(163, 162, 165)
-
-		-- Камера: чуть дальше и ниже чтобы вся модель влезла
-		preview_cam.CFrame = CFrame.new(0, -0.15, -10, -1, 0, 0, 0, 1, 0, 0, 0, -1)
-
-		-- ---- Skeleton overlay (поверх ViewportFrame) ----
-		local skeletonOverlay = Instance.new("Frame")
-		skeletonOverlay.Name = "\0"
-		skeletonOverlay.Size = UDim2.new(1, 0, 1, 0)
-		skeletonOverlay.BackgroundTransparency = 1
-		skeletonOverlay.BorderSizePixel = 0
-		skeletonOverlay.ZIndex = 10
-		skeletonOverlay.Parent = preview_dummy
-
-		local partPositions = {
-			Head = Vector3.new(0, 1.5, 0),
-			Torso = Vector3.new(0, 0, 0),
-			LeftArm = Vector3.new(-1.5, 0, 0),
-			RightArm = Vector3.new(1.5, 0, 0),
-			LeftLeg = Vector3.new(-0.5, -2, 0),
-			RightLeg = Vector3.new(0.5, -2, 0),
-		}
-
-		local skeletonLines = {}
-		local skeletonConnections = {
-			{"Head", "Torso"},
-			{"Torso", "LeftArm"},
-			{"Torso", "RightArm"},
-			{"Torso", "LeftLeg"},
-			{"Torso", "RightLeg"},
-		}
-
-		for _, conn in ipairs(skeletonConnections) do
-			local line = Instance.new("Frame")
-			line.Name = "\0"
-			line.BorderSizePixel = 0
-			line.BackgroundColor3 = Color3.new(1, 1, 1)
-			line.AnchorPoint = Vector2.new(0, 0.5)
-			line.Parent = skeletonOverlay
-			line.Visible = false
-			table.insert(skeletonLines, {line = line, from = conn[1], to = conn[2]})
-		end
-
-		-- ---- Chams: Highlight на частях модели ----
-		local modelParts = {head, torso, la, ra, ll, rl}
-		local chamHighlights = {}
-		for _, part in ipairs(modelParts) do
-			local highlight = Instance.new("Highlight")
-			highlight.Name = "\0"
-			highlight.Parent = part
-			highlight.Enabled = false
-			highlight.FillTransparency = 0.5
-			highlight.OutlineTransparency = 0
-			highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-			table.insert(chamHighlights, highlight)
-		end
-
-		-- ---- ESP фейковые элементы (box, name, distance, health) ----
-		local esp_fake_folder = Instance.new("Folder", preview_dummy)
-
-		-- Box: 100x130 (было 75x105 — модель выходила за пределы)
-		local preview_box_holder = Instance.new("Frame", esp_fake_folder)
-		preview_box_holder.Size = UDim2.new(0, 100, 0, 130)
-		preview_box_holder.Position = UDim2.new(0.5, -50, 0.5, -65)
-		preview_box_holder.BackgroundTransparency = 1
-		local preview_box_stroke = Instance.new("UIStroke", preview_box_holder)
-		preview_box_stroke.Color = Color3.new(1,1,1)
-
-		local preview_name = Instance.new("TextLabel", esp_fake_folder)
-		preview_name.Size = UDim2.new(0, 100, 0, 15)
-		preview_name.Position = UDim2.new(0.5, -50, 0.5, -82)
-		preview_name.BackgroundTransparency = 1
-		preview_name.Text = "Player"
-		preview_name.TextColor3 = Color3.new(1,1,1)
-		preview_name.TextSize = 12
-		preview_name.Font = Enum.Font.Code
-		preview_name.TextStrokeTransparency = 0
-
-		local preview_distance = Instance.new("TextLabel", esp_fake_folder)
-		preview_distance.Size = UDim2.new(0, 100, 0, 15)
-		preview_distance.Position = UDim2.new(0.5, -50, 0.5, 68)
-		preview_distance.BackgroundTransparency = 1
-		preview_distance.Text = "10m"
-		preview_distance.TextColor3 = Color3.new(1,1,1)
-		preview_distance.TextSize = 12
-		preview_distance.Font = Enum.Font.Code
-		preview_distance.TextStrokeTransparency = 0
-
-		local preview_hp_bg = Instance.new("Frame", esp_fake_folder)
-		preview_hp_bg.Size = UDim2.new(0, 2, 0, 130)
-		preview_hp_bg.Position = UDim2.new(0.5, -53, 0.5, -65)
-		preview_hp_bg.BackgroundColor3 = Color3.new(0,0,0)
-		preview_hp_bg.BorderSizePixel = 0
-		local preview_hp_fill = Instance.new("Frame", preview_hp_bg)
-		preview_hp_fill.Size = UDim2.new(1, 0, 0.7, 0)
-		preview_hp_fill.Position = UDim2.new(0, 0, 0.3, 0)
-		preview_hp_fill.BackgroundColor3 = Color3.new(0,1,0)
-		preview_hp_fill.BorderSizePixel = 0
-
-		-- ---- Projection helper (3D -> 2D для скелета) ----
-		local FOV = 55  -- совпадает с FieldOfView камеры
-		local camPos = Vector3.new(0, -0.15, -10)
-		local camRight = Vector3.new(-1, 0, 0)
-		local camUp = Vector3.new(0, 1, 0)
-		local camLook = Vector3.new(0, 0, -1)
-
-		local function project3DTo2D(worldPos, vpWidth, vpHeight)
-			local offset = worldPos - camPos
-			local camX = offset:Dot(camRight)
-			local camY = offset:Dot(camUp)
-			local depth = -offset:Dot(camLook)
-			if depth <= 0 then return nil end
-			local fovRad = math.rad(FOV / 2)
-			local focalLength = (vpHeight / 2) / math.tan(fovRad)
-			local screenX = (camX / depth) * focalLength + vpWidth / 2
-			local screenY = -(camY / depth) * focalLength + vpHeight / 2
-			return Vector2.new(screenX, screenY)
-		end
-
-		-- ---- Обновление превью ----
-		game:GetService("RunService").RenderStepped:Connect(function()
-			-- Показываем только когда активна вкладка Visuals
-			previewWindow.Instance.Visible = visualsPage.Active
-
-			if not visualsPage.Active then return end
-
-			-- Box
-			preview_box_holder.Visible = enemy_sets.box
-			preview_box_stroke.Color = enemy_sets.box_color[1]
-			-- Name
-			preview_name.Visible = enemy_sets.name
-			preview_name.TextColor3 = enemy_sets.name_color[1]
-			-- Distance
-			preview_distance.Visible = enemy_sets.distance
-			preview_distance.TextColor3 = enemy_sets.dist_color[1]
-			-- Health bar
-			preview_hp_bg.Visible = enemy_sets.health_bar
-			preview_hp_fill.BackgroundColor3 = enemy_sets.health_bar_color[1]
-
-			-- Skeleton
-			local showSkeleton = enemy_sets.skeleton
-			local skeletonColor = enemy_sets.skeleton_color[1]
-			local skeletonAlpha = enemy_sets.skeleton_color[2]
-			local vpWidth = preview_dummy.AbsoluteSize.X
-			local vpHeight = preview_dummy.AbsoluteSize.Y
-
-			if vpWidth > 0 and vpHeight > 0 then
-				for _, skel in ipairs(skeletonLines) do
-					local fromPos = project3DTo2D(partPositions[skel.from], vpWidth, vpHeight)
-					local toPos = project3DTo2D(partPositions[skel.to], vpWidth, vpHeight)
-
-					skel.line.Visible = showSkeleton and fromPos and toPos
-					if skel.line.Visible and fromPos and toPos then
-						local dx = toPos.X - fromPos.X
-						local dy = toPos.Y - fromPos.Y
-						local length = math.sqrt(dx * dx + dy * dy)
-						if length > 0 then
-							local angle = math.deg(math.atan2(dy, dx))
-							skel.line.Size = UDim2.new(0, length, 0, 1)
-							skel.line.Position = UDim2.new(0, fromPos.X, 0, fromPos.Y)
-							skel.line.Rotation = angle
-						end
-						skel.line.BackgroundColor3 = skeletonColor
-						skel.line.BackgroundTransparency = skeletonAlpha
-					end
-				end
-			end
-
-			-- Chams
-			local showChams = enemy_sets.chams
-			local chamColor = Color3.new(
-				math.clamp(enemy_sets.chams_color[1].R * enemy_sets.chams_glow_factor, 0, 1),
-				math.clamp(enemy_sets.chams_color[1].G * enemy_sets.chams_glow_factor, 0, 1),
-				math.clamp(enemy_sets.chams_color[1].B * enemy_sets.chams_glow_factor, 0, 1)
-			)
-
-			for _, highlight in ipairs(chamHighlights) do
-				highlight.Enabled = showChams
-				highlight.OutlineColor = chamColor
-				highlight.FillColor = chamColor
-			end
-
-			-- Меняем цвет частей модели под чамсы
-			local defaultColor = Color3.fromRGB(163, 162, 165)
-			for _, part in ipairs(modelParts) do
-				part.Color = showChams and chamColor or defaultColor
-			end
-		end)
-	end
-
 	
 	do
 		espsec:Toggle({Name = "Enabled", Value = false, Flag = "esp_enabled", Callback = function(bool)
@@ -7622,11 +7322,11 @@ do
 			{"Flags", "flags"},
 			{"Skeleton", "skeleton"},
 			} do
-			espsec:Toggle({Name = element[1], Value = false, Flag = `esp_{element[2]}`, Callback = function(bool)
+			espsec:Toggle({Name = element[1], Value = false, Flag = ("esp_" .. element[2]), Callback = function(bool)
 				enemy_sets[element[2]] = bool
 				cheat.EspLibrary.icaca()
-			end}):Colorpicker({Name = `{element[1]} color`, Value = Color3.new(1, 1, 1), Usealpha = true, Flag = `esp_{element[2]}_color`, Callback = function(color)
-				enemy_sets[`{element[2]}_color`] = {color.c, color.a}
+			end}):Colorpicker({Name = (element[1] .. " color"), Value = Color3.new(1, 1, 1), Usealpha = true, Flag = ("esp_" .. element[2] .. "_color"), Callback = function(color)
+				enemy_sets[element[2] .. "_color"] = {color.c, color.a}
 				cheat.EspLibrary.icaca()
 			end})
 		end
