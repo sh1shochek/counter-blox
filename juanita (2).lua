@@ -2550,97 +2550,149 @@ local Library = {
             }
         
             local Items = {} do
+                -- Основной контейнер — правый нижний угол экрана, перетаскиваемый
                 Items["KeybindList"] = Library:Create("Frame", {
-                    Name = "\0", 
-                    Parent = Library.Holder.Instance, 
-                    AnchorPoint = Vector2.new(0, 0.5), 
-                    Position = UDim2.new(0, 10, 0.5, 0), 
-                    Size = UDim2.new(0, 34, 0, 28), 
-                    ClipsDescendants = true, 
-                    BorderSizePixel = 0, 
+                    Name = "\0",
+                    Parent = Library.Holder.Instance,
+                    AnchorPoint = Vector2.new(1, 1),
+                    Position = UDim2.new(1, -10, 1, -10),
+                    Size = UDim2.new(0, 120, 0, 28),
+                    ClipsDescendants = true,
+                    BorderSizePixel = 0,
                     BackgroundColor3 = Library.Theme["Background"]
                 }):AddToTheme({BackgroundColor3 = "Background"})
 
+                Library:Create("UICorner", {
+                    Parent = Items["KeybindList"].Instance,
+                    CornerRadius = UDim.new(0, 4)
+                })
+
                 Items["KeybindList"]:MakeDraggable()
-        
+
+                -- Внешняя обводка (Border)
                 Library:Create("UIStroke", {
-                    Parent = Items["KeybindList"].Instance, 
-                    ApplyStrokeMode = Enum.ApplyStrokeMode.Border, 
-                    LineJoinMode = Enum.LineJoinMode.Miter, 
+                    Parent = Items["KeybindList"].Instance,
+                    ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+                    LineJoinMode = Enum.LineJoinMode.Miter,
                     Color = Library.Theme["Border"],
                     Thickness = 1
                 }):AddToTheme({Color = "Border"})
 
+                -- Внутренняя обводка (Outline)
                 Library:Create("UIStroke", {
-                    Parent = Items["KeybindList"].Instance, 
-                    ApplyStrokeMode = Enum.ApplyStrokeMode.Border, 
-                    LineJoinMode = Enum.LineJoinMode.Miter, 
+                    Parent = Items["KeybindList"].Instance,
+                    ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+                    LineJoinMode = Enum.LineJoinMode.Miter,
                     Color = Library.Theme["Outline"],
                     Thickness = 1
                 }):AddToTheme({Color = "Outline"})
-        
+
+                -- Паддинг внутри контейнера
                 Library:Create("UIPadding", {
-                    Parent = Items["KeybindList"].Instance, 
-                    PaddingTop = UDim.new(0, 4), 
-                    PaddingBottom = UDim.new(0, 4), 
-                    PaddingRight = UDim.new(0, 8), 
-                    PaddingLeft = UDim.new(0, 8)
+                    Parent = Items["KeybindList"].Instance,
+                    PaddingTop    = UDim.new(0, 4),
+                    PaddingBottom = UDim.new(0, 4),
+                    PaddingRight  = UDim.new(0, 8),
+                    PaddingLeft   = UDim.new(0, 8)
                 })
-        
+
+                -- Акцентная линия сверху (как у watermark)
                 Items["Liner"] = Library:Create("Frame", {
-                    Parent = Items["KeybindList"].Instance, 
-                    AnchorPoint = Vector2.new(1, 0), 
-                    Position = UDim2.new(1, 1, 0, 0), 
-                    Size = UDim2.new(1, 2, 0, 2), 
-                    BorderSizePixel = 0, 
+                    Parent = Items["KeybindList"].Instance,
+                    AnchorPoint = Vector2.new(0.5, 0),
+                    Position = UDim2.new(0.5, 0, 0, 0),
+                    Size = UDim2.new(1, 2, 0, 2),
+                    BorderSizePixel = 0,
                     BackgroundColor3 = Library.Theme["Accent"]
                 }):AddToTheme({BackgroundColor3 = "Accent"})
-        
+
+                -- Glow под линией (тот же паттерн что в watermark)
                 Items["Glow"] = Library:Create("ImageLabel", {
-                    Parent = Items["Liner"].Instance, 
-                    ImageColor3 = Library.Theme["Accent"], 
-                    ScaleType = Enum.ScaleType.Slice, 
-                    ImageTransparency = 0.8, 
-                    Size = UDim2.new(1, 25, 1, 25), 
-                    AnchorPoint = Vector2.new(0.5, 0.5), 
-                    Image = "http://www.roblox.com/asset/?id=18245826428", 
-                    BackgroundTransparency = 1, 
-                    Position = UDim2.new(0.5, 0, 0.5, 0), 
-                    BorderSizePixel = 0, 
+                    Parent = Items["Liner"].Instance,
+                    ImageColor3 = Library.Theme["Accent"],
+                    ScaleType = Enum.ScaleType.Slice,
+                    ImageTransparency = 0.8,
+                    Size = UDim2.new(1, 25, 1, 25),
+                    AnchorPoint = Vector2.new(0.5, 0.5),
+                    Image = "http://www.roblox.com/asset/?id=18245826428",
+                    BackgroundTransparency = 1,
+                    Position = UDim2.new(0.5, 0, 0.5, 0),
+                    BorderSizePixel = 0,
                     SliceCenter = Rect.new(Vector2.new(21, 21), Vector2.new(79, 79))
                 }):AddToTheme({ImageColor3 = "Accent"})
-        
+
+                -- Фоновый inline-блок для контента
                 Items["Inline"] = Library:Create("Frame", {
-                    Parent = Items["KeybindList"].Instance, 
-                    Size = UDim2.new(0, 0, 1, -2), 
-                    Position = UDim2.new(0, 0, 0, 2), 
+                    Parent = Items["KeybindList"].Instance,
+                    Size = UDim2.new(1, 0, 1, -2),
+                    Position = UDim2.new(0, 0, 0, 2),
                     ClipsDescendants = false,
-                    AutomaticSize = Enum.AutomaticSize.X,
-                    BorderSizePixel = 0, 
+                    AutomaticSize = Enum.AutomaticSize.XY,
+                    BorderSizePixel = 0,
                     BackgroundColor3 = Library.Theme["Inline"]
                 }):AddToTheme({BackgroundColor3 = "Inline"})
-        
+
                 Library:Create("UIStroke", {
                     Parent = Items["Inline"].Instance,
-                    ApplyStrokeMode = Enum.ApplyStrokeMode.Border, 
-                    LineJoinMode = Enum.LineJoinMode.Miter, 
+                    ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+                    LineJoinMode = Enum.LineJoinMode.Miter,
                     Color = Library.Theme["Outline"]
                 }):AddToTheme({Color = "Outline"})
 
                 Library:Create("UIStroke", {
-                    Parent = Items["Inline"].Instance, 
-                    ApplyStrokeMode = Enum.ApplyStrokeMode.Border, 
-                    LineJoinMode = Enum.LineJoinMode.Miter, 
+                    Parent = Items["Inline"].Instance,
+                    ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+                    LineJoinMode = Enum.LineJoinMode.Miter,
                     Color = Library.Theme["Border"],
                     Thickness = 1
                 }):AddToTheme({Color = "Border"})
-        
+
+                -- Заголовок "Keybinds"
+                Items["Title"] = Library:Create("TextLabel", {
+                    Parent = Items["Inline"].Instance,
+                    FontFace = Library.Font,
+                    TextSize = Library.FontSize,
+                    TextColor3 = Library.Theme["Accent"],
+                    Text = "Keybinds",
+                    BackgroundTransparency = 1,
+                    BorderSizePixel = 0,
+                    Position = UDim2.new(0, 0, 0, 2),
+                    Size = UDim2.new(1, 0, 0, 14),
+                    TextXAlignment = Enum.TextXAlignment.Center,
+                    TextYAlignment = Enum.TextYAlignment.Center
+                }):AddToTheme({TextColor3 = "Accent"})
+
+                -- Разделитель под заголовком
+                Items["Separator"] = Library:Create("Frame", {
+                    Parent = Items["Inline"].Instance,
+                    Position = UDim2.new(0, 0, 0, 16),
+                    Size = UDim2.new(1, 0, 0, 1),
+                    BorderSizePixel = 0,
+                    BackgroundColor3 = Library.Theme["Outline"]
+                }):AddToTheme({BackgroundColor3 = "Outline"})
+
+                -- Контент (список кейбиндов) под разделителем
                 Items["Content"] = Library:Create("Frame", {
-                    Parent = Items["Inline"].Instance, 
-                    BackgroundTransparency = 1, 
-                    Position = UDim2.new(0, 0, 0, 0), 
-                    Size = UDim2.new(0, 0, 0, 25), 
-                    BorderSizePixel = 0
+                    Parent = Items["Inline"].Instance,
+                    BackgroundTransparency = 1,
+                    Position = UDim2.new(0, 0, 0, 18),
+                    Size = UDim2.new(0, 80, 0, 0),
+                    BorderSizePixel = 0,
+                    AutomaticSize = Enum.AutomaticSize.Y
+                })
+
+                Library:Create("UIListLayout", {
+                    Parent = Items["Content"].Instance,
+                    FillDirection = Enum.FillDirection.Vertical,
+                    SortOrder = Enum.SortOrder.LayoutOrder,
+                    Padding = UDim.new(0, 2)
+                })
+
+                Library:Create("UIPadding", {
+                    Parent = Items["Content"].Instance,
+                    PaddingBottom = UDim.new(0, 4),
+                    PaddingLeft   = UDim.new(0, 4),
+                    PaddingRight  = UDim.new(0, 4)
                 })
             end
         
@@ -2652,40 +2704,40 @@ local Library = {
             end
         
             function KeybindList:UpdateSize()
-                local Width = 0
-                local Y = 6
-                local Count = 0
-        
+                local Width   = 90  -- минимальная ширина чтобы заголовок помещался
+                local Y       = 0   -- контент позиционируется через AutomaticSize
+                local Count   = 0
+
                 for Index, Value in KeybindList.Keys do
                     if Value.Showing then
                         local RowHeight = 13
-
                         Value.Object.Instance.Visible = true
-                        Width = math.max(Width, Value.Object.Instance.TextBounds.X)
-
-                        Value.Object:Tween({Position = UDim2.new(0, 8, 0, Y), Size = UDim2.new(0, Value.Object.Instance.TextBounds.X, 0, RowHeight), TextTransparency = 0}, KeybindTweenInfo)
-
-                        Y += RowHeight + 2
+                        Width = math.max(Width, Value.Object.Instance.TextBounds.X + 16)
+                        Value.Object:Tween({
+                            Position = UDim2.new(0, 0, 0, Y),
+                            Size     = UDim2.new(0, Value.Object.Instance.TextBounds.X + 4, 0, RowHeight),
+                            TextTransparency = 0
+                        }, KeybindTweenInfo)
+                        Y     += RowHeight + 2
                         Count += 1
                     end
                 end
-        
-                local TargetHeight = Count > 0 and math.max(18, Y + 3) or 18
-        
-                Items["Content"].Instance.Size = UDim2.new(0, Width, 0, TargetHeight)
-        
-                Items["Inline"]:Tween({Size = UDim2.new(0, Width + 14, 0, TargetHeight)}, KeybindTweenInfo)
-                Items["KeybindList"]:Tween({Size = UDim2.new(0, Width + 20, 0, TargetHeight + 10)}, KeybindTweenInfo)
 
-                local ActiveKeys = { }
+                -- Высота: заголовок(16) + разделитель(1) + строки + паддинг(6)
+                local ContentH  = Count > 0 and (Y + 4) or 0
+                local TotalH    = 16 + 1 + ContentH + 10  -- title+sep+content+padding
 
+                Items["Inline"]:Tween({Size     = UDim2.new(0, Width, 0, TotalH)},           KeybindTweenInfo)
+                Items["KeybindList"]:Tween({Size = UDim2.new(0, Width + 4, 0, TotalH + 6)},  KeybindTweenInfo)
+
+                local ActiveKeys = {}
                 for Index, Value in KeybindList.Keys do
                     if Value.Showing then
                         table.insert(ActiveKeys, Value.Object.Instance.Text)
                     end
                 end
-        
-                if #ActiveKeys == 0 then 
+
+                if #ActiveKeys == 0 then
                     Items["KeybindList"].Instance.Visible = false
                 else
                     Items["KeybindList"].Instance.Visible = true
@@ -2694,19 +2746,20 @@ local Library = {
         
             function KeybindList:Add(Name, Mode, Key)
                 local NewKeyText = Library:Create("TextLabel", {
-                    Parent = Items["Content"].Instance, 
-                    FontFace = Library.Font, 
-                    TextSize = Library.FontSize, 
-                    TextColor3 = Library.Theme["Text"], 
-                    Text = Name .. " - " .. Mode .. " [" .. Key .. "]", 
-                    BackgroundTransparency = 1, 
-                    BorderSizePixel = 0, 
-                    Size = UDim2.new(0, 0, 0, 14), 
-                    Position = UDim2.new(0, -8, 0, 6), 
-                    TextTransparency = 1, 
-                    Visible = false, 
-                    TextYAlignment = Enum.TextYAlignment.Center, 
-                    TextXAlignment = Enum.TextXAlignment.Left
+                    Parent = Items["Content"].Instance,
+                    FontFace = Library.Font,
+                    TextSize = Library.FontSize,
+                    TextColor3 = Library.Theme["Text"],
+                    Text = (Name ~= "" and Key ~= "") and (Name .. "  [" .. Key .. "]") or "",
+                    BackgroundTransparency = 1,
+                    BorderSizePixel = 0,
+                    AutomaticSize = Enum.AutomaticSize.XY,
+                    Size = UDim2.new(0, 80, 0, 13),
+                    Position = UDim2.new(0, 0, 0, 0),
+                    TextTransparency = 1,
+                    Visible = false,
+                    TextYAlignment = Enum.TextYAlignment.Center,
+                    TextXAlignment = Enum.TextXAlignment.Center
                 }):AddToTheme({TextColor3 = "Text"})
         
                 local CanShow = true
@@ -2727,31 +2780,31 @@ local Library = {
                 end
         
                 function NewKey:Set(Name, Mode, Key)
-                    NewKey.Object.Instance.Text = Name .. " - " .. Mode .. " [" .. Key .. "]"
-
+                    if Key ~= "" and Key ~= "none" and Key ~= "" then
+                        NewKey.Object.Instance.Text = Name .. "  [" .. Key .. "]"
+                    else
+                        NewKey.Object.Instance.Text = Name .. "  [none]"
+                    end
                     KeybindList:UpdateSize()
                 end
         
                 function NewKey:SetStatus(Bool)
                     Bool = Bool and CanShow
-        
+
                     if NewKey.Showing == Bool then
                         return
                     end
-        
+
                     NewKey.Showing = Bool
-        
+
                     if Bool then
                         NewKeyText.Instance.Visible = true
-                        NewKeyText.Instance.Position = UDim2.new(0, 0, 0, NewKeyText.Instance.Position.Y.Offset)
                         NewKeyText.Instance.TextTransparency = 1
-        
+                        NewKeyText:Tween({TextTransparency = 0}, KeybindTweenInfo)
                         KeybindList:UpdateSize()
                     else
-                        NewKeyText:Tween({Position = UDim2.new(0, 0, 0, NewKeyText.Instance.Position.Y.Offset), TextTransparency = 1}, KeybindTweenInfo)
-        
+                        NewKeyText:Tween({TextTransparency = 1}, KeybindTweenInfo)
                         KeybindList:UpdateSize()
-        
                         task.delay(KeybindTweenInfo.Time, function()
                             if not NewKey.Showing then
                                 NewKeyText.Instance.Visible = false
@@ -5695,41 +5748,40 @@ function Library:Window(cfg)
 			glowSg.Parent = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
 		end
 
-		local function makeGlowLayer(thick, transp, pad, radius)
+		-- Без UICorner — glow прямоугольный, без закруглений и без зазора
+		local function makeGlowLayer(thick, transp, pad)
 			local f = Instance.new("Frame", glowSg)
 			f.BackgroundTransparency = 1
 			f.BorderSizePixel        = 0
 			f.Visible                = false
-			Instance.new("UICorner", f).CornerRadius = UDim.new(0, radius)
 			local s = Instance.new("UIStroke", f)
 			s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-			s.LineJoinMode    = Enum.LineJoinMode.Round
+			s.LineJoinMode    = Enum.LineJoinMode.Miter
 			s.Thickness       = thick
 			s.Transparency    = transp
 			s.Color           = Color3.fromRGB(176, 176, 209)
 			return {f=f, s=s, pad=pad}
 		end
 
-		-- та же гауссова логика что в FOV circle glow
+		-- Гауссово затухание, PAD_START=0 чтобы не было зазора
 		local WM_GLOW_LAYERS    = 80
 		local WM_GLOW_RADIUS_PX = 8
 		local WM_GLOW_INTENSITY = 0.88
 
 		local GLOW_DEFS = {}
-		local WM_PAD_START = 2  -- минимальный отступ снаружи
+		local WM_PAD_START = 0  -- 0 = glow вплотную к краю, без зазора
 		for i = 1, WM_GLOW_LAYERS do
 			local t      = i / WM_GLOW_LAYERS
 			local alpha  = math.exp(-(t * 1.8)^2)
 			local transp = 1 - alpha * (1 - WM_GLOW_INTENSITY)
 			local pad    = WM_PAD_START + t * WM_GLOW_RADIUS_PX
-			local radius = math.floor(6 + pad * 0.5)
-			table.insert(GLOW_DEFS, {th=1, tr=transp, pad=pad, r=radius})
+			table.insert(GLOW_DEFS, {th=1, tr=transp, pad=pad})
 		end
 
 		local function buildGlow()
 			local t = {}
 			for _, d in GLOW_DEFS do
-				table.insert(t, makeGlowLayer(d.th, d.tr, d.pad, d.r))
+				table.insert(t, makeGlowLayer(d.th, d.tr, d.pad))
 			end
 			return t
 		end
@@ -5757,7 +5809,7 @@ function Library:Window(cfg)
 
 		-- ищем Instance watermark и keybinds через rawget после задержки
 		local wmInst, kbInst = nil, nil
-		task.delay(1, function()
+		task.delay(1.5, function()
 			local WM = rawget(newWindow, "Watermark")
 			if WM then
 				local item = WM.Items and WM.Items["Watermark"]
@@ -5767,8 +5819,10 @@ function Library:Window(cfg)
 			local KB = rawget(newWindow, "KeybindList")
 			if KB then
 				local item = KB.Items and KB.Items["KeybindList"]
-				kbInst = (type(item) == "table" and item.Instance) or item
-				if kbInst and not (kbInst:IsA("Frame") or kbInst:IsA("ScrollingFrame")) then kbInst = nil end
+				local raw = (type(item) == "table" and item.Instance) or item
+				if raw and (raw:IsA("Frame") or raw:IsA("ScrollingFrame")) then
+					kbInst = raw
+				end
 			end
 		end)
 
@@ -7349,12 +7403,14 @@ local aimbot_mode
 local target_part, target_player, target_collider
 local silent_mode, silent_projectionoverride, silent_wallbang, silent_magicbullet = "None", false, false, false
 local silent_methods = {
-	["Raycast"] = false,
+	["Raycast"]                    = false,
 	["FindPartOnRayWithWhitelist"] = false,
-	["FindPartOnRayWithIgnoreList"] = false,
-	["FindPartOnRay"] = false,
-	["ScreenPointToRay"] = false,
-	["ViewportPointToRay"] = false
+	["FindPartOnRayWithIgnoreList"]= false,
+	["FindPartOnRay"]              = false,
+	["ScreenPointToRay"]           = false,
+	["ViewportPointToRay"]         = false,
+	["Mouse"]                      = false,  -- мышиные рейкасты
+	["Ray"]                        = false,  -- устаревший Ray API
 }
 do
 	local aimsec = ui.sections.aimbot_main
@@ -7363,7 +7419,8 @@ do
 	local hitsec = ui.sections.hit_detection
 	local gunsec = ui.sections.gunmods
 
-	local aimbot_enabled, aimbot_enabled_key, aimbot_part, aimbot_mode, aimbot_smoothness = false, false, "Head", "Mouse", 0.7
+	local aimbot_enabled, aimbot_enabled_key, aimbot_part, aimbot_smoothness = false, false, "Head", 0.7
+	aimbot_mode = "Mouse"  -- используем глобальный aimbot_mode (читается из __namecall хука)
 	local aimbot_team_check, aimbot_dead_check, aimbot_dist_check, aimbot_max_distance = false, false, false, 600
 	local fov_show, fov_color, fov_outline, fov_size = false, Color3.fromRGB(200, 170, 255), false, 100
 
@@ -7412,37 +7469,188 @@ do
 		end})
 	end
 	do
-		-- Gun Modifications (UI). Переменные доступны для логики оружия,
-		-- если/когда она будет реализована под конкретную игру.
+		-- ============================================================
+		-- GUN MODIFICATIONS — полностью универсально, любая игра
+		--
+		-- Принцип работы:
+		--  1. getgc() — находим ВСЕ живые таблицы в памяти Lua
+		--  2. Для каждой таблицы проверяем: содержит ли она числовые
+		--     поля из расширенных списков ключей (200+ вариантов названий)
+		--  3. Если значение подходит под критерий — подменяем
+		--  4. Дополнительно: hookmetamethod на __newindex самих таблиц —
+		--     игра пытается восстановить значение → мы снова подменяем
+		--  5. Remove Recoil — через уже существующий __newindex хук камеры
+		-- ============================================================
+
 		local gun_remove_bullet_drop = false
-		local gun_remove_occlusion   = false
 		local gun_remove_recoil      = false
 		local gun_instant_bullet     = false
 		local gun_instant_aim        = false
-		local gun_force_firemodes    = false
-		local gun_manipulation       = false
+		local gun_no_spread          = false
 
-		gunsec:Toggle({Name = "Remove Bullet Drop", Value = false, Flag = "gun_remove_bullet_drop", Callback = function(bool)
-			gun_remove_bullet_drop = bool
-		end})
-		gunsec:Toggle({Name = "Remove Occlusion", Value = false, Flag = "gun_remove_occlusion", Callback = function(bool)
-			gun_remove_occlusion = bool
-		end})
-		gunsec:Toggle({Name = "Remove Recoil", Value = false, Flag = "gun_remove_recoil", Callback = function(bool)
-			gun_remove_recoil = bool
-		end})
-		gunsec:Toggle({Name = "Instant Bullet", Value = false, Flag = "gun_instant_bullet", Callback = function(bool)
-			gun_instant_bullet = bool
-		end})
-		gunsec:Toggle({Name = "Instant Aim", Value = false, Flag = "gun_instant_aim", Callback = function(bool)
-			gun_instant_aim = bool
-		end})
-		gunsec:Toggle({Name = "Force Firemodes", Value = false, Flag = "gun_force_firemodes", Callback = function(bool)
-			gun_force_firemodes = bool
-		end})
-		gunsec:Toggle({Name = "Manipulation", Value = false, Flag = "gun_manipulation", Callback = function(bool)
-			gun_manipulation = bool
-		end})
+		-- ---- Расширенные списки ключей (охватывают большинство игр) ----
+		local KEYS_GRAVITY = {
+			"Gravity","gravity","BulletGravity","bulletGravity","GravityScale",
+			"gravityScale","gravityFactor","GravityFactor","dropRate","DropRate",
+			"bulletDrop","BulletDrop","projectileGravity","ProjectileGravity",
+			"g","G","grav","PhysicsGravity","physicsGravity",
+		}
+		local KEYS_SPREAD = {
+			"Spread","spread","MaxSpread","maxSpread","MinSpread","minSpread",
+			"BulletSpread","bulletSpread","HipSpread","hipSpread","AimSpread","aimSpread",
+			"SpreadFactor","spreadFactor","Accuracy","accuracy","InAccuracy","inaccuracy",
+			"bloomFactor","BloomFactor","Bloom","bloom","recoilSpread","RecoilSpread",
+			"dispersion","Dispersion","cone","Cone","coneAngle","ConeAngle",
+			"bulletDeviation","BulletDeviation","deviation","Deviation",
+			"hipfireSpread","HipfireSpread","adsSpread","ADSSpread",
+		}
+		local KEYS_SPEED = {
+			"BulletSpeed","bulletSpeed","bullet_speed","BulletVelocity","bulletVelocity",
+			"MuzzleVelocity","muzzleVelocity","ProjectileSpeed","projectileSpeed",
+			"InitialSpeed","initialSpeed","launchSpeed","LaunchSpeed",
+			"ShootSpeed","shootSpeed","FireSpeed","fireSpeed",
+			"velocity","Velocity","projectileVelocity","ProjectileVelocity",
+			"bulletForce","BulletForce","impulse","Impulse",
+		}
+		local KEYS_AIMTIME = {
+			"AimTime","aimTime","aim_time","ADSTime","adsTime",
+			"AimDownSightsTime","aimDownSightsTime","ZoomTime","zoomTime",
+			"ZoomInTime","zoomInTime","ZoomOutTime","zoomOutTime",
+			"EquipTime","equipTime","DrawTime","drawTime","ReadyTime","readyTime",
+			"AimSpeed","aimSpeed","adsSpeed","ADSSpeed","aimRate","AimRate",
+			"transitionTime","TransitionTime","lerpTime","LerpTime",
+		}
+
+		-- ---- Кэш уже найденных таблиц (для быстрого повторного патча) ----
+		-- Ключ: таблица, Значение: набор ключей которые нашли в ней
+		local found_tables = {
+			gravity  = {},  -- {[tbl] = key}
+			spread   = {},
+			speed    = {},
+			aimtime  = {},
+		}
+
+		-- ---- Применить значение к кэшированным таблицам ----
+		local function apply_cache(cache, value)
+			for tbl, key in cache do
+				pcall(function()
+					setreadonly(tbl, false)
+					tbl[key] = value
+				end)
+			end
+		end
+
+		-- ---- Сканировать getgc() и заполнить/обновить кэш ----
+		local function scan_gc(keys, cache, check, value)
+			pcall(function()
+				for _, v in getgc(true) do
+					if type(v) ~= "table" then continue end
+					for _, key in keys do
+						if cache[v] then break end  -- уже кэширована
+						local ok, val = pcall(rawget, v, key)
+						if ok and check(val) then
+							cache[v] = key
+							pcall(function()
+								setreadonly(v, false)
+								v[key] = value
+							end)
+						end
+					end
+				end
+			end)
+		end
+
+		-- ---- Полный скан + применение ко всем кэшированным ----
+		local function run_patch()
+			if gun_remove_bullet_drop then
+				scan_gc(KEYS_GRAVITY, found_tables.gravity,
+					function(v) return type(v)=="number" and v~=0 and math.abs(v)<2000 end, 0)
+				apply_cache(found_tables.gravity, 0)
+			end
+			if gun_no_spread then
+				scan_gc(KEYS_SPREAD, found_tables.spread,
+					function(v) return type(v)=="number" and v>0 end, 0)
+				apply_cache(found_tables.spread, 0)
+			end
+			if gun_instant_bullet then
+				scan_gc(KEYS_SPEED, found_tables.speed,
+					function(v) return type(v)=="number" and v>0 and v<500000 end, 9e8)
+				apply_cache(found_tables.speed, 9e8)
+			end
+			if gun_instant_aim then
+				scan_gc(KEYS_AIMTIME, found_tables.aimtime,
+					function(v) return type(v)=="number" and v>0 end, 0)
+				apply_cache(found_tables.aimtime, 0)
+			end
+		end
+
+		-- ---- Heartbeat: быстрый re-apply кэша + редкий полный скан ----
+		local accum_fast = 0   -- повторное применение к кэшу
+		local accum_full = 0   -- полный скан getgc()
+		game:GetService("RunService").Heartbeat:Connect(LPH_NO_VIRTUALIZE(function(dt)
+			if not (gun_remove_bullet_drop or gun_no_spread
+				or gun_instant_bullet or gun_instant_aim) then return end
+
+			-- Каждые 0.1с — применяем к уже найденным таблицам (быстро)
+			accum_fast += dt
+			if accum_fast >= 0.1 then
+				accum_fast = 0
+				if gun_remove_bullet_drop then apply_cache(found_tables.gravity,  0)   end
+				if gun_no_spread          then apply_cache(found_tables.spread,    0)   end
+				if gun_instant_bullet     then apply_cache(found_tables.speed,     9e8) end
+				if gun_instant_aim        then apply_cache(found_tables.aimtime,   0)   end
+			end
+
+			-- Каждые 2с — полный скан (ловим новые объекты после смены оружия)
+			accum_full += dt
+			if accum_full >= 2 then
+				accum_full = 0
+				task.spawn(run_patch)
+			end
+		end))
+
+		-- ---- Remove Recoil (RenderStepped — максимальная частота) ----
+		getgenv()._gun_remove_recoil = false
+		getgenv()._recoil_locked_cf  = nil
+		game:GetService("RunService").RenderStepped:Connect(LPH_NO_VIRTUALIZE(function()
+			if not getgenv()._gun_remove_recoil then
+				getgenv()._recoil_locked_cf = nil
+				return
+			end
+			getgenv()._recoil_locked_cf = workspace.CurrentCamera.CFrame
+		end))
+
+		-- ---- UI toggles ----
+		gunsec:Toggle({Name = "Remove Bullet Drop", Value = false, Flag = "gun_remove_bullet_drop",
+			Callback = function(bool)
+				gun_remove_bullet_drop = bool
+				if bool then task.spawn(run_patch) end
+			end})
+
+		gunsec:Toggle({Name = "No Spread", Value = false, Flag = "gun_no_spread",
+			Callback = function(bool)
+				gun_no_spread = bool
+				if bool then task.spawn(run_patch) end
+			end})
+
+		gunsec:Toggle({Name = "Remove Recoil", Value = false, Flag = "gun_remove_recoil",
+			Callback = function(bool)
+				gun_remove_recoil = bool
+				getgenv()._gun_remove_recoil = bool
+				getgenv()._recoil_locked_cf  = bool and workspace.CurrentCamera.CFrame or nil
+			end})
+
+		gunsec:Toggle({Name = "Instant Bullet", Value = false, Flag = "gun_instant_bullet",
+			Callback = function(bool)
+				gun_instant_bullet = bool
+				if bool then task.spawn(run_patch) end
+			end})
+
+		gunsec:Toggle({Name = "Instant Aim", Value = false, Flag = "gun_instant_aim",
+			Callback = function(bool)
+				gun_instant_aim = bool
+				if bool then task.spawn(run_patch) end
+			end})
 	end
 	do
 		chksec:Dropdown({Name = "Checks", Values = {"Team check", "Dead check", "Distance check"}, Value = {}, Flag = "aimbot_checks", Multi = true, Callback = function(tbl)
@@ -7549,15 +7757,13 @@ do
 			"Mouse",
 			"Ray"
 		}, Value = {}, Flag = "aimbot_silent_mode", Multi = true, Callback = function(tbl)
-				for i, v in silent_methods do
-					silent_methods[i] = false
-				end
-				print('--------------------------------')
-				for _, value in tbl do
-					silent_methods[value] = true
-					print(value)
-				end
-			end})
+			for i in silent_methods do
+				silent_methods[i] = false
+			end
+			for _, value in tbl do
+				silent_methods[value] = true
+			end
+		end})
 		chksec:Toggle({Name = "Projection override", Value = false, Flag = "silent_projectionoverride", Callback = function(bool)
 			silent_projectionoverride = bool
 		end})
@@ -9416,128 +9622,26 @@ end
 -- ---- settings page (встроенная в новую библиотеку) ----
 ui.window.Init()
 
--- ---- UIGlow для watermark и keybinds (Frame+UICorner+UIStroke как FOV) ----
+-- ---- Тоггл свечения watermark + keybinds (glow уже создан в Library:Window) ----
 do
-	local glowEnabled = false
-	local RS          = game:GetService("RunService")
-	local CoreGuiRef  = cloneref and cloneref(game:GetService("CoreGui")) or game:GetService("CoreGui")
-
-	local glowGui = Instance.new("ScreenGui")
-	glowGui.Name           = "GlowGui"
-	glowGui.DisplayOrder   = 9997
-	glowGui.IgnoreGuiInset = true
-	glowGui.ResetOnSpawn   = false
-	pcall(function() glowGui.Parent = CoreGuiRef end)
-	if not glowGui.Parent then
-		glowGui.Parent = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
-	end
-
-	-- один слой glow: Frame + UICorner + UIStroke (как createRingFrame в FOV)
-	local function makeGlowLayer(thickness, transparency, radius)
-		local f = Instance.new("Frame", glowGui)
-		f.BackgroundTransparency = 1
-		f.BorderSizePixel = 0
-		f.Visible = false
-		Instance.new("UICorner", f).CornerRadius = UDim.new(0, radius)
-		local s = Instance.new("UIStroke", f)
-		s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-		s.LineJoinMode    = Enum.LineJoinMode.Round
-		s.Thickness       = thickness
-		s.Transparency    = transparency
-		-- Color устанавливаем напрямую (glow создаётся до __newindex хука)
-		s.Color = Color3.fromRGB(176,176,209)
-		return f, s
-	end
-
-	-- 5 слоёв на каждый элемент — как glow rings в FOV
-	local LAYERS = {
-		{th=1,   tr=0.1,  pad=0},
-		{th=2,   tr=0.5,  pad=3},
-		{th=3,   tr=0.7,  pad=7},
-		{th=4,   tr=0.85, pad=12},
-		{th=5,   tr=0.93, pad=18},
-	}
-
-	local wmLayers, wmStrokes = {}, {}
-	local kbLayers, kbStrokes = {}, {}
-	for _, l in LAYERS do
-		local f, s = makeGlowLayer(l.th, l.tr, 6 + l.pad)
-		table.insert(wmLayers, {f=f, s=s, pad=l.pad})
-		table.insert(wmStrokes, s)
-		local f2, s2 = makeGlowLayer(l.th, l.tr, 6 + l.pad)
-		table.insert(kbLayers, {f=f2, s=s2, pad=l.pad})
-		table.insert(kbStrokes, s2)
-	end
-
-	local function updateLayers(layers, target, show)
-		if not target or not target.Parent or not show then
-			for _, l in layers do l.f.Visible = false end
-			return
-		end
-		local abs = target.AbsolutePosition
-		local sz  = target.AbsoluteSize
-		for _, l in layers do
-			local p = l.pad
-			l.f.Position = UDim2.fromOffset(abs.X - p, abs.Y - p)
-			l.f.Size     = UDim2.fromOffset(sz.X + p*2, sz.Y + p*2)
-			l.f.Visible  = true
-		end
-	end
-
-	local wmTarget, kbTarget = nil, nil
-
-	local function findTargets()
-		if not Library or not Library.Holder or not Library.Holder.Instance then return end
-		local sg = Library.Holder.Instance  -- это ScreenGui
-		for _, child in sg:GetChildren() do
-			-- watermark: Frame с AutomaticSize.X и шириной > 100
-			if not wmTarget and child:IsA("Frame")
-				and child.AutomaticSize == Enum.AutomaticSize.X
-				and child.AbsoluteSize.X > 100 then
-				wmTarget = child
-			end
-			-- keybinds: TextButton
-			if not kbTarget and child:IsA("TextButton") then
-				kbTarget = child
-			end
-		end
-	end
-
-	task.delay(1.5, function()
-		-- ищем напрямую в ScreenGui библиотеки
-		if Library and Library.Holder and Library.Holder.Instance then
-			local sg = Library.Holder.Instance
-			warn("[Glow] ScreenGui children count:", #sg:GetChildren())
-			for i, child in sg:GetChildren() do
-				warn("[Glow]", i, child.ClassName, tostring(child.AbsoluteSize), child.AutomaticSize)
-			end
-		end
-		findTargets()
-		if not wmTarget then
-			task.delay(2, findTargets)
-		end
-	end)
-
-	RS.RenderStepped:Connect(function()
-		if not glowEnabled then
-			for _, l in wmLayers do l.f.Visible = false end
-			for _, l in kbLayers do l.f.Visible = false end
-			return
-		end
-		if not wmTarget or not wmTarget.Parent then findTargets() end
-		updateLayers(wmLayers, wmTarget, glowEnabled)
-		updateLayers(kbLayers, kbTarget, glowEnabled)
-	end)
-
 	local miscGlowSec = ui.sections.misc
-	miscGlowSec:Toggle({Name = "Watermark glow", Value = false, Flag = "wm_glow", Callback = function(bool)
-		if ui.window and ui.window.__new and ui.window.__new._setGlow then
-			ui.window.__new._setGlow(bool)
+	miscGlowSec:Toggle({
+		Name     = "Watermark glow",
+		Value    = false,
+		Flag     = "wm_glow",
+		Callback = function(bool)
+			-- _setGlow создаётся в Library:Window (строки ~5688)
+			local W = ui.window and ui.window.__new
+			if W and W._setGlow then
+				W._setGlow(bool)
+			end
 		end
-	end})
+	})
 end
 
 -- ---- hooks (silent aim / thirdperson) + ESP load ----
+-- Глобальный флаг Remove Recoil — устанавливается из Gun Mods do-блока выше
+-- (recoil_locked_cf и gun_remove_recoil объявлены там через upvalue)
 local __newindex; __newindex = hookmetamethod(game, "__newindex", newcclosure(LPH_NO_VIRTUALIZE(function(self, idx, val)
 	if self == Camera and idx == "CFrame" then
 		if thirdperson and thirdperson_key then
@@ -9550,7 +9654,14 @@ local __newindex; __newindex = hookmetamethod(game, "__newindex", newcclosure(LP
 				0, aspect_ratio_y, 0,
 				0, 0, 1
 			)
-		end;
+		end
+		-- Remove Recoil: заменяем новый CFrame на сохранённый (без отдачи),
+		-- но сохраняем направление взгляда чтобы не ломать вращение мышью
+		if getgenv()._gun_remove_recoil and getgenv()._recoil_locked_cf then
+			local locked = getgenv()._recoil_locked_cf
+			-- берём позицию из нового CFrame, ориентацию — из сохранённого
+			val = _CFramenew(val.Position) * (locked - locked.Position)
+		end
 	end
 	return __newindex(self, idx, val)
 end)))
@@ -9576,13 +9687,12 @@ local __namecall; __namecall = hookmetamethod(game, "__namecall", newcclosure(LP
 	if checkcaller() then return __namecall(self, ...) end
 	local args = {...}
 	local method = getnamecallmethod()
+	-- silent aim: работает когда выбран режим Silent и метод включён
 	if silent_methods[method] and aimbot_mode == "Silent" then
-		local hitpart = target_part
-		local traceback = debugtraceback()
-		if not (hitpart --[[and (global_vars.stack_check == "" or traceback and traceback:find(global_vars.stack_check))]]) then
+		local hitpart = target_part  -- атомарное чтение upvalue
+		if not hitpart or not hitpart.Parent then
 			return __namecall(self, ...)
 		end
-		print(traceback)
 
 		local hitsize = hitpart.Size
 		local orgpos = hitpart.Position
