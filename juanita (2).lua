@@ -6124,6 +6124,12 @@ LPH_NO_VIRTUALIZE(function()
 				chams_style = "Glow",
 				chams_color = { Color3.new(1, 1, 1), 0 },
 				chams_glow_factor = 2
+			},
+			self_chams = {
+				enabled = false,
+				style = "Jelly",
+				color = { Color3.new(1, 1, 1), 0 },
+				glow_factor = 3
 			}
 		}
 	}
@@ -6648,16 +6654,18 @@ LPH_NO_VIRTUALIZE(function()
 				alwaysOnTop = true
 				zindex = 5
 				sizeMul = 1.02
-			elseif style == "Pulse" then
-				local wave = (math.sin(now * 3.2) + 1) * 0.5
-				local pulse = 1.35 + (1 - wave) * 0.45
-				color = scaledColor(base, pulse)
-				-- Pulse теперь реально уходит почти в прозрачность: примерно 0.08 -> 0.90
-				transparency = 0.08 + wave * 0.82
-				alwaysOnTop = true
-				zindex = 6
-				sizeMul = 1.01 + wave * 0.02
-			elseif style == "Rainbow" then
+		elseif style == "Pulse" then
+			material = Enum.Material.Neon
+			local wave = (math.sin(now * 1.0) + 1) * 0.5
+			local pulse = 1.0 + (1 - wave) * 0.35
+			color = Color3.new(
+				math.clamp(base_color.R * pulse, 0, 1),
+				math.clamp(base_color.G * pulse, 0, 1),
+				math.clamp(base_color.B * pulse, 0, 1)
+			)
+			target_transparency = 0.08 + wave * 0.82
+			texture_id = ""
+elseif style == "Rainbow" then
 				color = Color3.fromHSV((now * 0.12) % 1, 0.75, 1)
 				transparency = 0.28
 				alwaysOnTop = true
@@ -7119,6 +7127,13 @@ LPH_NO_VIRTUALIZE(function()
 		esp_table.playerAdded:Disconnect()
 		esp_table.playerRemoving:Disconnect()
 
+		if esp_table.settings.self_chams then
+			esp_table.settings.self_chams.enabled = false
+			pcall(function()
+				esp_table.update_self_chams()
+			end)
+		end
+
 		esp_table.__loaded = false;
 	end
 
@@ -7155,6 +7170,342 @@ LPH_NO_VIRTUALIZE(function()
 			task.spawn(function() v:forceupdate() end)
 		end
 	end
+
+	local original_properties = setmetatable({}, {__mode = "k"})
+	local clothing_cache = setmetatable({}, {__mode = "k"})
+
+	local function isBodyPart(part)
+		local name = part.Name
+		if name == "HumanoidRootPart" then return false end
+		if part:FindFirstAncestorOfClass("Tool") then return false end
+		
+		-- Ignore weapons/viewmodels/arms folders
+		local parent = part.Parent
+		while parent and parent ~= workspace do
+			local p_name = parent.Name:lower()
+			if p_name:find("weapon") or p_name:find("viewmodel") or p_name:find("arms") then
+				return false
+			end
+			parent = parent.Parent
+		end
+		
+		return true
+	end
+
+	local function hide_clothing(character)
+		for _, child in character:GetChildren() do
+			if child:IsA("Shirt") and child.ShirtTemplate ~= "" then
+				clothing_cache[child] = { Property = "ShirtTemplate", Value = child.ShirtTemplate }
+				child.ShirtTemplate = ""
+			elseif child:IsA("Pants") and child.PantsTemplate ~= "" then
+				clothing_cache[child] = { Property = "PantsTemplate", Value = child.PantsTemplate }
+				child.PantsTemplate = ""
+			elseif child:IsA("ShirtGraphic") and child.Graphic ~= "" then
+				clothing_cache[child] = { Property = "Graphic", Value = child.Graphic }
+				child.Graphic = ""
+			end
+		end
+	end
+
+	local function restore_clothing()
+		for obj, cache in pairs(clothing_cache) do
+			if obj and obj.Parent then
+				pcall(function()
+					obj[cache.Property] = cache.Value
+				end)
+			end
+		end
+		table.clear(clothing_cache)
+	end
+
+	local function restore_part(part)
+		if not part then return end
+		local props = original_properties[part]
+		if props then
+			pcall(function()
+				part.Material = props.Material
+				part.Color = props.Color
+				part.Transparency = props.Transparency
+				part.Reflectance = props.Reflectance
+				if part:IsA("MeshPart") and props.MeshPartTextureID then
+					part.TextureID = props.MeshPartTextureID
+				end
+				for mesh, mesh_props in pairs(props.SpecialMeshes or {}) do
+					if mesh and mesh.Parent then
+						mesh.TextureId = mesh_props.TextureId
+						mesh.VertexColor = mesh_props.VertexColor
+					end
+				end
+				for decal, tex_id in pairs(props.Decals or {}) do
+					if decal and decal.Parent then
+						decal.Texture = tex_id
+					end
+				end
+			end)
+			original_properties[part] = nil
+		end
+		for _, child in part:GetChildren() do
+			if child.Name == "SelfChamTexture" or child.Name == "SelfChamOutline" then
+				child:Destroy()
+			end
+		end
+	end
+
+						local function apply_self_cham_to_part(part, style, base_color, transparency, glow)
+		if not (part and part:IsA("BasePart") and isBodyPart(part)) then return end
+
+		-- Destroy any leftover forcefield overlays from the previous step
+		local overlay = part:FindFirstChild("SelfChamOverlay")
+		if overlay then
+			overlay:Destroy()
+		end
+
+		if not original_properties[part] then
+			original_properties[part] = {
+				Material = part.Material,
+				Color = part.Color,
+				Transparency = part.Transparency,
+				Reflectance = part.Reflectance,
+				MeshPartTextureID = part:IsA("MeshPart") and part.TextureID or nil,
+				SpecialMeshes = {},
+				Decals = {}
+			}
+			for _, child in part:GetChildren() do
+				if child:IsA("SpecialMesh") then
+					original_properties[part].SpecialMeshes[child] = {
+						TextureId = child.TextureId,
+						VertexColor = child.VertexColor
+					}
+				elseif child:IsA("Decal") then
+					original_properties[part].Decals[child] = child.Texture
+				end
+			end
+		end
+
+		local now = tick()
+		local color = base_color
+		local target_transparency = transparency
+		local reflectance = 0
+		local material = Enum.Material.SmoothPlastic
+		local texture_id = "rbxassetid://9883582451" -- Default to fully transparent texture to clear default skins
+
+		if style == "Jelly" then
+			-- Jelly style: Gorgeous highly-reflective, semi-transparent refracting Glass material
+			material = Enum.Material.Glass
+			reflectance = 0.6 -- Smooth glossy jelly reflections
+			color = base_color -- Custom color (select any color on the palette to get colored jelly!)
+			target_transparency = 0.45 -- Transparent gelatin/jelly body
+			texture_id = "" 
+		elseif style == "Glow" then
+			material = Enum.Material.Neon
+			-- Use base_color directly so the user has 100% exact color control (e.g. pink, dark red, pastel red render perfectly!)
+			color = base_color
+			target_transparency = 0
+			texture_id = ""
+		elseif style == "Flat" then
+			material = Enum.Material.SmoothPlastic
+			color = base_color
+			target_transparency = 0
+			texture_id = ""
+		elseif style == "ForceField" then
+			-- Restore the classic Roblox ForceField material using the original player's skin and clothing texture ("old texture")
+			-- This completely removes the custom scrolling/shimmering animations and uses the exact selected color directly!
+			material = Enum.Material.ForceField
+			color = base_color
+			target_transparency = transparency
+			local props = original_properties[part]
+			if props then
+				-- If the part has an original texture (like accessories), keep it so they shimmer.
+				-- If it has no texture (like body parts), set a transparent texture ID so that Roblox's ForceField shader activates and shimmers on them too!
+				if props.MeshPartTextureID and props.MeshPartTextureID ~= "" then
+					texture_id = props.MeshPartTextureID
+				else
+					texture_id = "rbxassetid://9883582451"
+				end
+			else
+				texture_id = "rbxassetid://9883582451"
+			end
+		elseif style == "Glass" then
+			material = Enum.Material.Glass
+			color = base_color
+			target_transparency = 0.38
+			reflectance = 0.5
+			texture_id = ""
+		elseif style == "Pulse" then
+			material = Enum.Material.Neon
+			local wave = (math.sin(now * 1.0) + 1) * 0.5
+			local pulse = 1.0 + (1 - wave) * 0.35
+			color = Color3.new(
+				math.clamp(base_color.R * pulse, 0, 1),
+				math.clamp(base_color.G * pulse, 0, 1),
+				math.clamp(base_color.B * pulse, 0, 1)
+			)
+			target_transparency = 0.08 + wave * 0.82
+			texture_id = ""
+		elseif style == "Rainbow" then
+			material = Enum.Material.Neon
+			color = Color3.fromHSV((now * 0.03) % 1, 0.75, 1)
+			target_transparency = 0.28
+			texture_id = ""
+		end
+
+		pcall(function()
+			part.Material = material
+			part.Color = color
+			part.Transparency = target_transparency
+			part.Reflectance = reflectance
+		end)
+
+		-- Hide standard face decals
+		for _, child in part:GetChildren() do
+			if child:IsA("Decal") then
+				pcall(function() child.Texture = "" end)
+			end
+		end
+
+		-- Handle SelectionBox outlines around each part (bone) for Jelly style
+		if style == "Jelly" then
+			local outline = part:FindFirstChild("SelfChamOutline")
+			if not outline then
+				outline = Instance.new("SelectionBox")
+				outline.Name = "SelfChamOutline"
+				outline.Parent = part
+			end
+			outline.Adornee = part
+			outline.Color3 = base_color -- Outlines are beautifully tinted with the selected color!
+			outline.LineThickness = 0.035
+			outline.SurfaceTransparency = 1
+			outline.Visible = true
+		else
+			local outline = part:FindFirstChild("SelfChamOutline")
+			if outline then
+				outline:Destroy()
+			end
+		end
+
+		-- Apply transparent texture (or custom forcefield) to meshes
+		local has_mesh = part:IsA("MeshPart")
+		local special_mesh = nil
+		for _, child in part:GetChildren() do
+			if child:IsA("SpecialMesh") then
+				has_mesh = true
+				special_mesh = child
+				break
+			end
+		end
+
+		if has_mesh then
+			if part:IsA("MeshPart") then
+				local mesh_tex = (style == "Jelly") and "" or texture_id
+				pcall(function() part.TextureID = mesh_tex end)
+			end
+			if special_mesh then
+				local spec_tex = (style == "Jelly") and "" or texture_id
+				if style == "ForceField" then
+					spec_tex = "rbxassetid://9883582451"
+					local props = original_properties[part]
+					if props and props.SpecialMeshes and props.SpecialMeshes[special_mesh] and props.SpecialMeshes[special_mesh].TextureId ~= "" then
+						spec_tex = props.SpecialMeshes[special_mesh].TextureId
+					end
+				end
+				pcall(function() special_mesh.TextureId = spec_tex end)
+				-- Apply custom vertex color to special mesh so it colors exactly matching the body part (prevents grey head!)
+				pcall(function()
+					special_mesh.VertexColor = Vector3.new(color.R, color.G, color.B)
+				end)
+			end
+		end
+
+		-- Handle 6-sided textures for non-mesh blocks in Forcefield only
+		local use_6_sided = (style == "ForceField" and not has_mesh)
+
+		if not use_6_sided then
+			for _, child in part:GetChildren() do
+				if child.Name == "SelfChamTexture" then
+					child:Destroy()
+				end
+			end
+		else
+			local existing_textures = {}
+			for _, child in part:GetChildren() do
+				if child.Name == "SelfChamTexture" and child:IsA("Texture") then
+					existing_textures[child.Face] = child
+				end
+			end
+
+			local faces = {
+				Enum.NormalId.Front,
+				Enum.NormalId.Back,
+				Enum.NormalId.Left,
+				Enum.NormalId.Right,
+				Enum.NormalId.Top,
+				Enum.NormalId.Bottom
+			}
+
+			for _, face in faces do
+				local tex = existing_textures[face]
+				if not tex then
+					tex = Instance.new("Texture")
+					tex.Name = "SelfChamTexture"
+					tex.Face = face
+					tex.Parent = part
+				end
+				tex.Texture = texture_id
+				-- For Latex, color the texture highlights with base_color (chameleon!). For other styles, use color.
+				tex.Color3 = (style == "Latex") and base_color or color
+				tex.Transparency = target_transparency
+				tex.StudsPerTileU = 2
+				tex.StudsPerTileV = 2
+				if style == "ForceField" then
+					tex.OffsetStudsU = (now * 0.5) % 2
+					tex.OffsetStudsV = (now * 0.5) % 2
+				else
+					tex.OffsetStudsU = 0
+					tex.OffsetStudsV = 0
+				end
+			end
+		end
+	end
+
+	function esp_table.update_self_chams()
+		local self_chams = esp_table.settings.self_chams
+		local character = lplr.Character
+		if not (self_chams and self_chams.enabled and character) then
+			restore_clothing()
+			if character then
+				for _, child in character:GetDescendants() do
+					if child:IsA("BasePart") then
+						restore_part(child)
+						local ov = child:FindFirstChild("SelfChamOverlay")
+						if ov then ov:Destroy() end
+					end
+				end
+			end
+			return
+		end
+
+		hide_clothing(character) -- Hide clothing for all solid / texture styles to allow pure materials
+
+		for _, child in character:GetDescendants() do
+			if child:IsA("BasePart") then
+				apply_self_cham_to_part(
+					child,
+					self_chams.style,
+					self_chams.color[1],
+					self_chams.color[2],
+					self_chams.glow_factor
+				)
+			end
+		end
+	end
+
+	cheat.utility.new_renderstepped(function()
+		if esp_table.__loaded then
+			pcall(function()
+				esp_table.update_self_chams()
+			end)
+		end
+	end)
 
 	function esp_table.register_flag(flag, func)
 		assert(not esp_table.__loaded, "[ESP] tried adding flag after loading, add before loading")
@@ -9096,6 +9447,24 @@ do
 		espsec:Slider({Name = "Chams glow factor", Min = 0, Max = 100, Float = 0.1, Value = 3, Flag = "esp_chams_glow_factor", Callback = function(int)
 			enemy_sets.chams_glow_factor = int
 			cheat.EspLibrary.icaca()
+		end})
+
+		espsec:Toggle({Name = "Self chams", Value = false, Flag = "esp_self_chams", Callback = function(bool)
+			cheat.EspLibrary.settings.self_chams.enabled = bool
+			pcall(function() cheat.EspLibrary.update_self_chams() end)
+		end}):Colorpicker({Name = "Self chams color", Value = Color3.new(1, 1, 1), Usealpha = false, Flag = "esp_self_chams_color", Callback = function(color)
+			cheat.EspLibrary.settings.self_chams.color = {color.c, color.a}
+			pcall(function() cheat.EspLibrary.update_self_chams() end)
+		end})
+
+		espsec:Dropdown({Name = "Self chams style", Values = {"Jelly", "Glow", "Flat", "ForceField", "Glass", "Pulse", "Rainbow"}, Value = "Jelly", Flag = "esp_self_chams_style", Multi = false, Callback = function(value)
+			cheat.EspLibrary.settings.self_chams.style = value or "Jelly"
+			pcall(function() cheat.EspLibrary.update_self_chams() end)
+		end})
+
+		espsec:Slider({Name = "Self chams glow factor", Min = 0, Max = 100, Float = 0.1, Value = 3, Flag = "esp_self_chams_glow_factor", Callback = function(int)
+			cheat.EspLibrary.settings.self_chams.glow_factor = int
+			pcall(function() cheat.EspLibrary.update_self_chams() end)
 		end})
 	end
 	do
