@@ -7124,11 +7124,10 @@ ui.subtabs = {
 }
 ui.sections = {
 	aimbot_main = ui.subtabs.combat_aimbot:Section({Name = "Aimbot", Side = "Left"}),
-	aimbot_checks = ui.subtabs.combat_aimbot:Section({Name = "Checks", Side = "Right"}),
+	fov_style    = ui.subtabs.combat_aimbot:Section({Name = "FOV Style",     Side = "Right"}),
 	gunmods = ui.subtabs.combat_aimbot:Section({Name = "Gun Modifications", Side = "Right"}),
 	--aimbot_silent = ui.subtabs.combat_aimbot:Section({Name = "Silent", Side = "Right"}),
 	hit_detection = ui.subtabs.combat_visuals:Section({Name = "Hit detection", Side = "Left"}),
-	fov_style    = ui.subtabs.combat_visuals:Section({Name = "FOV Style",     Side = "Right"}),
 	target_info  = ui.subtabs.combat_visuals:Section({Name = "Target Info",   Side = "Left"}),
 	hitmarkers   = ui.subtabs.combat_visuals:Section({Name = "Hitmarkers",    Side = "Right"}),
 
@@ -7414,7 +7413,7 @@ local silent_methods = {
 }
 do
 	local aimsec = ui.sections.aimbot_main
-	local chksec = ui.sections.aimbot_checks
+	local chksec = ui.sections.aimbot_main  -- "Checks" merged into Aimbot section
 	local samsec = ui.sections.aimbot_silent
 	local hitsec = ui.sections.hit_detection
 	local gunsec = ui.sections.gunmods
@@ -7686,9 +7685,7 @@ do
 		end}):Colorpicker({Name = "FOV Color", Value = Color3.new(1, 1, 1), Usealpha = false, Flag = "fov_color", Callback = function(color)
 			fov_color = color.c
 		end})
-		chksec:Toggle({Name = "Outline", Value = false, Flag = "fov_outline", Callback = function(bool)
-			fov_outline = bool
-		end})
+		-- "Outline" toggle removed (duplicate of FOV Style → Outline)
 	end
 	do
 		local fsec = ui.sections.fov_style
