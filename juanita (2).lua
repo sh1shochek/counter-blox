@@ -6122,14 +6122,16 @@ LPH_NO_VIRTUALIZE(function()
 				highlight = false,
 				highlight_color = { Library.Theme.accent or Color3.new(1, 1, 1), 0 },
 				chams_style = "Glow",
-				chams_color = { Color3.new(1, 1, 1), 0 },
+				chams_color = { Library.Theme.accent or Color3.new(1, 1, 1), 0 },
 				chams_glow_factor = 2
 			},
 			self_chams = {
 				enabled = false,
-				style = "Jelly",
-				color = { Color3.new(1, 1, 1), 0 },
-				glow_factor = 3
+				style = "Ocean Gel",
+				color = { Library.Theme.accent or Color3.new(1, 1, 1), 0 },
+				glow_factor = 3,
+				highlight = false,
+				highlight_color = { Library.Theme.accent or Color3.new(1, 1, 1), 0 }
 			}
 		}
 	}
@@ -7289,16 +7291,15 @@ elseif style == "Rainbow" then
 		local material = Enum.Material.SmoothPlastic
 		local texture_id = "rbxassetid://9883582451" -- Default to fully transparent texture to clear default skins
 
-		if style == "Jelly" then
-			-- Jelly style: Gorgeous highly-reflective, semi-transparent refracting Glass material
+		if style == "Ocean Gel" then
+			-- Highly reflective semi-transparent Glass material with no 2D textures to allow 100% pure, perfect color rendering and refraction!
 			material = Enum.Material.Glass
-			reflectance = 0.6 -- Smooth glossy jelly reflections
-			color = base_color -- Custom color (select any color on the palette to get colored jelly!)
-			target_transparency = 0.45 -- Transparent gelatin/jelly body
-			texture_id = "" 
+			reflectance = 0.5
+			color = base_color
+			target_transparency = 0.5
+			texture_id = "" -- Keep empty to prevent grey head and ensure perfect glass coloring matching the body!
 		elseif style == "Glow" then
 			material = Enum.Material.Neon
-			-- Use base_color directly so the user has 100% exact color control (e.g. pink, dark red, pastel red render perfectly!)
 			color = base_color
 			target_transparency = 0
 			texture_id = ""
@@ -7308,15 +7309,11 @@ elseif style == "Rainbow" then
 			target_transparency = 0
 			texture_id = ""
 		elseif style == "ForceField" then
-			-- Restore the classic Roblox ForceField material using the original player's skin and clothing texture ("old texture")
-			-- This completely removes the custom scrolling/shimmering animations and uses the exact selected color directly!
 			material = Enum.Material.ForceField
 			color = base_color
 			target_transparency = transparency
 			local props = original_properties[part]
 			if props then
-				-- If the part has an original texture (like accessories), keep it so they shimmer.
-				-- If it has no texture (like body parts), set a transparent texture ID so that Roblox's ForceField shader activates and shimmers on them too!
 				if props.MeshPartTextureID and props.MeshPartTextureID ~= "" then
 					texture_id = props.MeshPartTextureID
 				else
@@ -7363,26 +7360,6 @@ elseif style == "Rainbow" then
 			end
 		end
 
-		-- Handle SelectionBox outlines around each part (bone) for Jelly style
-		if style == "Jelly" then
-			local outline = part:FindFirstChild("SelfChamOutline")
-			if not outline then
-				outline = Instance.new("SelectionBox")
-				outline.Name = "SelfChamOutline"
-				outline.Parent = part
-			end
-			outline.Adornee = part
-			outline.Color3 = base_color -- Outlines are beautifully tinted with the selected color!
-			outline.LineThickness = 0.035
-			outline.SurfaceTransparency = 1
-			outline.Visible = true
-		else
-			local outline = part:FindFirstChild("SelfChamOutline")
-			if outline then
-				outline:Destroy()
-			end
-		end
-
 		-- Apply transparent texture (or custom forcefield) to meshes
 		local has_mesh = part:IsA("MeshPart")
 		local special_mesh = nil
@@ -7396,11 +7373,10 @@ elseif style == "Rainbow" then
 
 		if has_mesh then
 			if part:IsA("MeshPart") then
-				local mesh_tex = (style == "Jelly") and "" or texture_id
-				pcall(function() part.TextureID = mesh_tex end)
+				pcall(function() part.TextureID = texture_id end)
 			end
 			if special_mesh then
-				local spec_tex = (style == "Jelly") and "" or texture_id
+				local spec_tex = (style == "Ocean Gel") and "" or texture_id
 				if style == "ForceField" then
 					spec_tex = "rbxassetid://9883582451"
 					local props = original_properties[part]
@@ -7418,10 +7394,9 @@ elseif style == "Rainbow" then
 
 		-- Handle 6-sided textures for non-mesh blocks in Forcefield only
 		local use_6_sided = (style == "ForceField" and not has_mesh)
-
 		if not use_6_sided then
 			for _, child in part:GetChildren() do
-				if child.Name == "SelfChamTexture" then
+				if child.Name == "SelfChamTexture" or child.Name == "SelfChamOutline" then
 					child:Destroy()
 				end
 			end
@@ -7451,40 +7426,77 @@ elseif style == "Rainbow" then
 					tex.Parent = part
 				end
 				tex.Texture = texture_id
-				-- For Latex, color the texture highlights with base_color (chameleon!). For other styles, use color.
-				tex.Color3 = (style == "Latex") and base_color or color
+				tex.Color3 = color
 				tex.Transparency = target_transparency
 				tex.StudsPerTileU = 2
 				tex.StudsPerTileV = 2
-				if style == "ForceField" then
-					tex.OffsetStudsU = (now * 0.5) % 2
-					tex.OffsetStudsV = (now * 0.5) % 2
-				else
-					tex.OffsetStudsU = 0
-					tex.OffsetStudsV = 0
-				end
+				tex.OffsetStudsU = (now * 0.5) % 2
+				tex.OffsetStudsV = (now * 0.5) % 2
 			end
+		end
+	end
+
+	local function apply_self_cham_highlight(character, color, trans)
+		if not character then return end
+		local highlight = character:FindFirstChild("SelfChamHighlight")
+		if not highlight then
+			highlight = Instance.new("Highlight")
+			highlight.Name = "SelfChamHighlight"
+			highlight.Parent = character
+		end
+		highlight.Adornee = character
+		highlight.FillTransparency = 1
+		highlight.OutlineColor = color
+		highlight.OutlineTransparency = trans or 0.4 -- A beautiful, subtle, small outline!
+		highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+	end
+
+	local function remove_self_cham_highlight(character)
+		if not character then return end
+		local highlight = character:FindFirstChild("SelfChamHighlight")
+		if highlight then
+			highlight:Destroy()
 		end
 	end
 
 	function esp_table.update_self_chams()
 		local self_chams = esp_table.settings.self_chams
 		local character = lplr.Character
+
+		-- Determine if we should show the Highlight on the local player character
+		local show_highlight = self_chams.highlight or (self_chams.enabled and self_chams.style == "Ocean Gel")
+		local highlight_color = Color3.new(1, 1, 1)
+		local highlight_trans = 0.45
+
+		if self_chams.highlight then
+			-- Use chosen custom Self highlight color and transparency
+			highlight_color = self_chams.highlight_color[1] or Color3.fromRGB(0, 102, 255)
+			highlight_trans = self_chams.highlight_color[2] or 0.1
+		elseif self_chams.enabled and self_chams.style == "Ocean Gel" then
+			-- Default bold outline for Ocean Gel style
+			highlight_color = self_chams.color[1]
+			highlight_trans = 0.02
+		end
+
+		if show_highlight and character then
+			apply_self_cham_highlight(character, highlight_color, highlight_trans)
+		else
+			remove_self_cham_highlight(character)
+		end
+
 		if not (self_chams and self_chams.enabled and character) then
 			restore_clothing()
 			if character then
 				for _, child in character:GetDescendants() do
 					if child:IsA("BasePart") then
 						restore_part(child)
-						local ov = child:FindFirstChild("SelfChamOverlay")
-						if ov then ov:Destroy() end
 					end
 				end
 			end
 			return
 		end
 
-		hide_clothing(character) -- Hide clothing for all solid / texture styles to allow pure materials
+		hide_clothing(character)
 
 		for _, child in character:GetDescendants() do
 			if child:IsA("BasePart") then
@@ -7507,7 +7519,7 @@ elseif style == "Rainbow" then
 		end
 	end)
 
-	function esp_table.register_flag(flag, func)
+		function esp_table.register_flag(flag, func)
 		assert(not esp_table.__loaded, "[ESP] tried adding flag after loading, add before loading")
 		local registered_flags = esp_table.registered_flags
 		registered_flags[#registered_flags + 1] = {flag, func}
@@ -9429,7 +9441,7 @@ do
 		espsec:Toggle({Name = "Chams", Value = false, Flag = "esp_chams", Callback = function(bool)
 			enemy_sets.chams = bool
 			cheat.EspLibrary.icaca()
-		end}):Colorpicker({Name = "Chams color", Value = Color3.new(1, 1, 1), Usealpha = false, Flag = "esp_chams_color", Callback = function(color)
+		end}):Colorpicker({Name = "Chams color", Value = Library.Theme.accent or Color3.new(1, 1, 1), Usealpha = false, Flag = "esp_chams_color", Callback = function(color)
 			enemy_sets.chams_color = {color.c, color.a}
 			cheat.EspLibrary.icaca()
 		end})
@@ -9449,23 +9461,34 @@ do
 			cheat.EspLibrary.icaca()
 		end})
 
+		local self_chams = cheat.EspLibrary.settings.self_chams
+
 		espsec:Toggle({Name = "Self chams", Value = false, Flag = "esp_self_chams", Callback = function(bool)
-			cheat.EspLibrary.settings.self_chams.enabled = bool
+			self_chams.enabled = bool
 			pcall(function() cheat.EspLibrary.update_self_chams() end)
-		end}):Colorpicker({Name = "Self chams color", Value = Color3.new(1, 1, 1), Usealpha = false, Flag = "esp_self_chams_color", Callback = function(color)
-			cheat.EspLibrary.settings.self_chams.color = {color.c, color.a}
+		end}):Colorpicker({Name = "Self chams color", Value = Library.Theme.accent or Color3.new(1, 1, 1), Usealpha = false, Flag = "esp_self_chams_color", Callback = function(color)
+			self_chams.color = {color.c, color.a}
 			pcall(function() cheat.EspLibrary.update_self_chams() end)
 		end})
 
-		espsec:Dropdown({Name = "Self chams style", Values = {"Jelly", "Glow", "Flat", "ForceField", "Glass", "Pulse", "Rainbow"}, Value = "Jelly", Flag = "esp_self_chams_style", Multi = false, Callback = function(value)
-			cheat.EspLibrary.settings.self_chams.style = value or "Jelly"
+		espsec:Toggle({Name = "Self highlight", Value = false, Flag = "esp_self_highlight", Callback = function(bool)
+			self_chams.highlight = bool
+			pcall(function() cheat.EspLibrary.update_self_chams() end)
+		end}):Colorpicker({Name = "Self highlight color", Value = Library.Theme.accent or Color3.new(1, 1, 1), Usealpha = true, Flag = "esp_self_highlight_color", Callback = function(color)
+			self_chams.highlight_color = {color.c, color.a}
+			pcall(function() cheat.EspLibrary.update_self_chams() end)
+		end})
+
+		espsec:Dropdown({Name = "Self chams style", Values = {"Ocean Gel", "Glow", "Flat", "ForceField", "Glass", "Pulse", "Rainbow"}, Value = "Ocean Gel", Flag = "esp_self_chams_style", Multi = false, Callback = function(value)
+			self_chams.style = value or "Ocean Gel"
 			pcall(function() cheat.EspLibrary.update_self_chams() end)
 		end})
 
 		espsec:Slider({Name = "Self chams glow factor", Min = 0, Max = 100, Float = 0.1, Value = 3, Flag = "esp_self_chams_glow_factor", Callback = function(int)
-			cheat.EspLibrary.settings.self_chams.glow_factor = int
+			self_chams.glow_factor = int
 			pcall(function() cheat.EspLibrary.update_self_chams() end)
 		end})
+
 	end
 	do
 		local player_list = cheat.player_list
