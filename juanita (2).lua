@@ -2425,7 +2425,9 @@ local Library = {
                     ZIndex = 1,
                     SliceCenter = Rect.new(Vector2.new(21, 21), Vector2.new(79, 79))
                 }):AddToTheme({ImageColor3 = 'Accent'})
-                
+
+                Items["Glow"].Instance.Visible = false
+
                 Items["Inline"] = Library:Create("Frame", {
                     Name = "\0",
                     Parent = Items["Watermark"].Instance,
@@ -2503,6 +2505,14 @@ local Library = {
 
             function Watermark:SetVisibility(Bool)
                 Items["Watermark"].Instance.Visible = Bool
+                if Items["Glow"] and Items["Glow"].Instance then
+                    Items["Glow"].Instance.Visible = Bool
+                    if Bool then
+                        Items["Glow"].Instance.ImageTransparency = 0.55
+                    else
+                        Items["Glow"].Instance.ImageTransparency = 0.8
+                    end
+                end
             end
 
             function Watermark:SetText(Text)
@@ -2634,6 +2644,8 @@ local Library = {
                     SliceCenter = Rect.new(Vector2.new(21, 21), Vector2.new(79, 79))
                 }):AddToTheme({ImageColor3 = "Accent"})
 
+                Items["Glow"].Instance.Visible = false
+
                 Items["Inline"] = Library:Create("Frame", {
                     Name = "\0",
                     Parent = Items["KeybindList"].Instance,
@@ -2706,6 +2718,14 @@ local Library = {
             function KeybindList:SetVisibility(Bool)
                 KeybindList.Enabled = Bool
                 KeybindList:UpdateSize()
+                if Items["Glow"] and Items["Glow"].Instance then
+                    Items["Glow"].Instance.Visible = Bool
+                    if Bool then
+                        Items["Glow"].Instance.ImageTransparency = 0.55
+                    else
+                        Items["Glow"].Instance.ImageTransparency = 0.8
+                    end
+                end
             end
 
             function KeybindList:UpdateSize()
@@ -5255,28 +5275,6 @@ local Library = {
                             Library.MenuKeybind = Library.Flags["MenuKeybind"].Key
                         end
                     })
-
-                    if Self.Watermark then
-                        MenuSection:Toggle({
-                            Name = "Watermark",
-                            Flag = "Watermark",
-                            Default = true,
-                            Callback = function(Value)
-                                Self.Watermark:SetVisibility(Value)
-                            end
-                        })
-                    end
-
-                    if Self.KeybindList then 
-                        MenuSection:Toggle({
-                            Name = "Keybind list",
-                            Flag = "Keybind list",
-                            Default = true,
-                            Callback = function(Value)
-                                Self.KeybindList:SetVisibility(Value)
-                            end
-                        })
-                    end
                 end
 
                 local ConfigName 
@@ -5741,14 +5739,12 @@ function Library:Window(cfg)
 	end
 	if type(rawget(newWindow, "KeybindList")) ~= "table" then
 		newWindow:KeybindList()
-	end
-
-	-- ---- Glow для watermark и keybinds ----
+	-- ---- Glow для watermark и keybinds (indicator glow) ----
 	do
 		local CoreGuiRef  = cloneref and cloneref(game:GetService("CoreGui")) or game:GetService("CoreGui")
 		local glowSg = Instance.new("ScreenGui")
 		glowSg.Name           = "WMGlowGui"
-		glowSg.DisplayOrder   = 48  -- ниже watermark (50)
+		glowSg.DisplayOrder   = 48
 		glowSg.IgnoreGuiInset = false
 		glowSg.ResetOnSpawn   = false
 		pcall(function() glowSg.Parent = CoreGuiRef end)
@@ -5756,7 +5752,6 @@ function Library:Window(cfg)
 			glowSg.Parent = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
 		end
 
-		-- Без UICorner — glow прямоугольный, без закруглений и без зазора
 		local function makeGlowLayer(thick, transp, pad)
 			local f = Instance.new("Frame", glowSg)
 			f.BackgroundTransparency = 1
@@ -5771,13 +5766,12 @@ function Library:Window(cfg)
 			return {f=f, s=s, pad=pad}
 		end
 
-		-- Гауссово затухание, PAD_START=0 чтобы не было зазора
 		local WM_GLOW_LAYERS    = 80
 		local WM_GLOW_RADIUS_PX = 8
-		local WM_GLOW_INTENSITY = 0.88
+		local WM_GLOW_INTENSITY = 0.95
 
 		local GLOW_DEFS = {}
-		local WM_PAD_START = 0  -- 0 = glow вплотную к краю, без зазора
+		local WM_PAD_START = 0
 		for i = 1, WM_GLOW_LAYERS do
 			local t      = i / WM_GLOW_LAYERS
 			local alpha  = math.exp(-(t * 1.8)^2)
@@ -5796,9 +5790,7 @@ function Library:Window(cfg)
 
 		local wmGlowLayers = buildGlow()
 		local kbGlowLayers = buildGlow()
-		local glowOn = false
-
-		local guiInset = game:GetService("GuiService"):GetGuiInset().Y
+		local glowOn = false   -- по умолчанию выключено
 
 		local function applyGlow(layers, target, on)
 			if not target or not target.Parent or not on then
@@ -5815,7 +5807,6 @@ function Library:Window(cfg)
 			end
 		end
 
-		-- ищем Instance watermark и keybinds через rawget после задержки
 		local wmInst, kbInst = nil, nil
 		task.delay(1.5, function()
 			local WM = rawget(newWindow, "Watermark")
@@ -5844,12 +5835,12 @@ function Library:Window(cfg)
 			applyGlow(kbGlowLayers, kbInst, glowOn)
 		end)
 
-		-- сохраняем для тогла в misc
 		newWindow._wmGlowLayers = wmGlowLayers
 		newWindow._kbGlowLayers = kbGlowLayers
 		newWindow._setGlow = function(bool)
 			glowOn = bool
 		end
+	end
 	end
 
 	-- ---- Watermark live info (FPS / ping / time) ----
@@ -8690,6 +8681,7 @@ do
 			if aimbot_mode == "Camera" then
 				Camera.CFrame = Camera.CFrame:Lerp(CFrame.lookAt(Camera.CFrame.Position, new_pos), aimbot_smoothness)
 			end
+			-- Silent: мышка НЕ двигается (только custom crosshair приклеивается)
 		end
 	end))
 end
@@ -9675,12 +9667,57 @@ do
 		bunnyhop = bool
 	end})
 
-	-- ---- Indicator (имя цели над прицелом) ----
-	miscbox:Toggle({Name = "Aim indicator", Value = false, Flag = "indicator_enabled", Callback = function(bool)
-		if cheat._aimIndicator then
-			cheat._aimIndicator.enabled = bool
+	miscbox:Toggle({
+		Name = "Watermark",
+		Flag = "Watermark",
+		Value = true,
+		Callback = function(bool)
+			local wm = rawget(ui.window, "Watermark")
+			if wm and wm.SetVisibility then
+				pcall(wm.SetVisibility, wm, bool)
+			end
+			if ui.window._setGlow then
+				pcall(ui.window._setGlow, bool)
+			end
 		end
-	end})
+	})
+
+	miscbox:Toggle({
+		Name = "Keybind list",
+		Flag = "Keybind list",
+		Value = true,
+		Callback = function(bool)
+			local kl = rawget(ui.window, "KeybindList")
+			if kl and kl.SetVisibility then
+				pcall(kl.SetVisibility, kl, bool)
+			end
+			if ui.window._setGlow then
+				pcall(ui.window._setGlow, bool)
+			end
+		end
+	})
+
+	miscbox:Toggle({
+		Name = "indicator glow",
+		Flag = "indicator_glow",
+		Value = false,
+		Callback = function(bool)
+			local inner = ui.window and ui.window.__new
+
+			-- Только встроенный Glow на линии (тот, который идёт по линии)
+			local wm = inner and rawget(inner, "Watermark")
+			if wm and wm.Items and wm.Items["Glow"] and wm.Items["Glow"].Instance then
+				wm.Items["Glow"].Instance.Visible = bool
+				wm.Items["Glow"].Instance.ImageTransparency = bool and 0.40 or 0.8
+			end
+
+			local kl = inner and rawget(inner, "KeybindList")
+			if kl and kl.Items and kl.Items["Glow"] and kl.Items["Glow"].Instance then
+				kl.Items["Glow"].Instance.Visible = bool
+				kl.Items["Glow"].Instance.ImageTransparency = bool and 0.40 or 0.8
+			end
+		end
+	})
 
 	movebox:Toggle({Name = "Speedhack", Value = false, Flag = "speedhack", Callback = function(bool)
 		speedhack = bool
@@ -9758,6 +9795,10 @@ do
 	local ch_pulse_t     = 0      -- внутренний таймер [0..1]
 	local ch_pulse_dir   = 1      -- 1 = растём, -1 = сжимаемся
 
+	-- позиция crosshair (для плавного движения)
+	local ch_pos = Vector2.new(0, 0)
+	local ch_lerp_speed = 0.25    -- скорость сглаживания (меньше = плавнее)
+
 	-- создаём 4 линии + 4 обводки (по одной на каждую линию)
 	local lines = {}
 	local outlines = {}
@@ -9812,7 +9853,20 @@ do
 			current_gap = ch_pulse_min + (ch_pulse_max - ch_pulse_min) * ease
 		end
 
-		local center = UserInputService:GetMouseLocation()
+		-- Определяем целевую позицию
+		local target_center = UserInputService:GetMouseLocation()
+
+		if aimbot_mode == "Silent" and target_part then
+			local pos, onScreen = _WorldToViewportPoint(Camera, target_part.Position)
+			if onScreen then
+				target_center = Vector2.new(pos.X, pos.Y)
+			end
+		end
+
+		-- Плавное движение (lerp)
+		ch_pos = ch_pos:Lerp(target_center, ch_lerp_speed)
+
+		local center = ch_pos
 		local rad    = math.rad(ch_angle)
 
 		local dirs = {
@@ -9829,9 +9883,9 @@ do
 			outlines[i].From      = from
 			outlines[i].To        = to
 			outlines[i].Color     = Color3.new(0, 0, 0)
-			outlines[i].Thickness = ch_thick + 2
-			outlines[i].Transparency = ch_alpha
-			outlines[i].Visible   = ch_outline
+			outlines[i].Thickness = ch_thick + 4
+			outlines[i].Transparency = 0
+			outlines[i].Visible   = ch_outline and ch_thick > 0
 
 			lines[i].From         = from
 			lines[i].To           = to
@@ -10608,22 +10662,7 @@ end
 -- ---- settings page (встроенная в новую библиотеку) ----
 ui.window.Init()
 
--- ---- Тоггл свечения watermark + keybinds (glow уже создан в Library:Window) ----
-do
-	local miscGlowSec = ui.sections.misc
-	miscGlowSec:Toggle({
-		Name     = "Watermark glow",
-		Value    = false,
-		Flag     = "wm_glow",
-		Callback = function(bool)
-			-- _setGlow создаётся в Library:Window (строки ~5688)
-			local W = ui.window and ui.window.__new
-			if W and W._setGlow then
-				W._setGlow(bool)
-			end
-		end
-	})
-end
+
 
 -- ---- hooks (silent aim / thirdperson) + ESP load ----
 -- Глобальный флаг Remove Recoil — устанавливается из Gun Mods do-блока выше
