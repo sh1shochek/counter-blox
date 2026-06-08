@@ -821,8 +821,8 @@ local Library = {
             local Scale = Library:GetScreenScale()
             local DragDelta = (Input.Position - DragStart) / Scale
             
-            local NewX = StartPosition.X.Offset + DragDelta.X
-            local NewY = StartPosition.Y.Offset + DragDelta.Y
+            local NewX = StartOffsetX + DragDelta.X
+            local NewY = StartOffsetY + DragDelta.Y
 
             local ScreenSize = Gui.Parent.AbsoluteSize / Scale
             local GuiSize = Gui.AbsoluteSize / Scale
@@ -839,7 +839,8 @@ local Library = {
             if Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch then
                 Dragging = true
                 DragStart = Input.Position
-                StartPosition = Gui.Position
+                StartOffsetX = Gui.AbsolutePosition.X
+                StartOffsetY = Gui.AbsolutePosition.Y + GuiInset
     
                 if InputChanged then 
                     return
@@ -2583,8 +2584,8 @@ local Library = {
                 Items["KeybindList"] = Library:Create("Frame", {
                     Name = "\0",
                     Parent = Library.Holder.Instance,
-                    AnchorPoint = Vector2.new(1, 1),
-                    Position = UDim2.new(1, -10, 1, -10),
+                    AnchorPoint = Vector2.new(0, 0),
+                    Position = UDim2.new(0, 10, 0, GuiInset + 44),
                     Size = UDim2.new(0, 122, 0, 30),
                     ClipsDescendants = false,
                     BorderSizePixel = 0,
@@ -2729,13 +2730,13 @@ local Library = {
             end
 
             function KeybindList:UpdateSize()
-                local Width = math.max(112, GetTextWidth("Keybinds") + 28)
+                local Width = math.max(160, GetTextWidth("Keybinds") + 28)
                 local Y = 0
                 local Count = 0
 
                 for Index, Value in KeybindList.Keys do
                     if Value.Showing then
-                        local Text = Value.Object.Instance.Text
+                        local Text = Value.Object._fullText or ""
                         local RowWidth = GetTextWidth(Text) + 2
                         local RowHeight = 14
 
@@ -2745,8 +2746,13 @@ local Library = {
                         Value.Object:Tween({
                             Position = UDim2.new(0, 0, 0, Y),
                             Size = UDim2.new(1, 0, 0, RowHeight),
-                            TextTransparency = 0
                         }, KeybindTweenInfo)
+                        if Value.Object._nameLabel then
+                            Value.Object._nameLabel:Tween({TextTransparency = 0}, KeybindTweenInfo)
+                        end
+                        if Value.Object._keyLabel then
+                            Value.Object._keyLabel:Tween({TextTransparency = 0}, KeybindTweenInfo)
+                        end
 
                         Y += RowHeight + 2
                         Count += 1
@@ -2764,25 +2770,59 @@ local Library = {
             end
 
             function KeybindList:Add(Name, Mode, Key)
-                local NewKeyText = Library:Create("TextLabel", {
+                -- Контейнер для строки
+                local RowFrame = Library:Create("Frame", {
                     Name = "\0",
                     Parent = Items["Content"].Instance,
-                    FontFace = Library.Font,
-                    TextSize = Library.FontSize,
-                    TextColor3 = Library.Theme["Text"],
-                    Text = (Name ~= "" and Key ~= "") and (Name .. "  [" .. Key .. "]") or "",
-                    ZIndex = 6,
                     BackgroundTransparency = 1,
                     BorderSizePixel = 0,
                     Size = UDim2.new(1, 0, 0, 14),
                     Position = UDim2.new(0, 0, 0, 0),
-                    TextTransparency = 1,
                     Visible = false,
+                    ClipsDescendants = false
+                })
+                -- Имя кейбинда — слева
+                local NameLabel = Library:Create("TextLabel", {
+                    Name = "\0",
+                    Parent = RowFrame.Instance,
+                    FontFace = Library.Font,
+                    TextSize = Library.FontSize,
+                    TextColor3 = Library.Theme["Text"],
+                    Text = Name or "",
+                    ZIndex = 6,
+                    BackgroundTransparency = 1,
+                    BorderSizePixel = 0,
+                    Size = UDim2.new(0.5, 0, 1, 0),
+                    Position = UDim2.new(0, 0, 0, 0),
+                    TextTransparency = 1,
                     TextYAlignment = Enum.TextYAlignment.Center,
                     TextXAlignment = Enum.TextXAlignment.Left,
-                    TextTruncate = Enum.TextTruncate.None,
+                    TextTruncate = Enum.TextTruncate.AtEnd,
                     ClipsDescendants = false
                 }):AddToTheme({TextColor3 = "Text"})
+                -- Кнопка бинда — справа
+                local KeyLabel = Library:Create("TextLabel", {
+                    Name = "\0",
+                    Parent = RowFrame.Instance,
+                    FontFace = Library.Font,
+                    TextSize = Library.FontSize,
+                    TextColor3 = Library.Theme["Accent"],
+                    Text = Key ~= "" and ("[" .. Key .. "]") or "[none]",
+                    ZIndex = 6,
+                    BackgroundTransparency = 1,
+                    BorderSizePixel = 0,
+                    Size = UDim2.new(0.5, 0, 1, 0),
+                    Position = UDim2.new(0.5, 0, 0, 0),
+                    TextTransparency = 1,
+                    TextYAlignment = Enum.TextYAlignment.Center,
+                    TextXAlignment = Enum.TextXAlignment.Right,
+                    TextTruncate = Enum.TextTruncate.None,
+                    ClipsDescendants = false
+                }):AddToTheme({TextColor3 = "Accent"})
+                local NewKeyText = RowFrame
+                NewKeyText._nameLabel = NameLabel
+                NewKeyText._keyLabel = KeyLabel
+                NewKeyText._fullText = (Name ~= "" and Key ~= "") and (Name .. "  [" .. Key .. "]") or ""
 
                 local CanShow = true
 
@@ -2804,11 +2844,16 @@ local Library = {
                 end
 
                 function NewKey:Set(Name, Mode, Key)
-                    if Key ~= "" and Key ~= "none" and Key ~= "None" then
-                        NewKey.Object.Instance.Text = Name .. "  [" .. Key .. "]"
-                    else
-                        NewKey.Object.Instance.Text = Name .. "  [none]"
+                    local keyStr = (Key ~= "" and Key ~= "none" and Key ~= "None") and Key or "none"
+                    -- Обновляем раздельные лейблы
+                    if NewKey.Object._nameLabel then
+                        NewKey.Object._nameLabel.Instance.Text = Name
                     end
+                    if NewKey.Object._keyLabel then
+                        NewKey.Object._keyLabel.Instance.Text = "[" .. keyStr .. "]"
+                    end
+                    -- Полный текст для расчёта ширины
+                    NewKey.Object._fullText = Name .. "  [" .. keyStr .. "]"
 
                     KeybindList:UpdateSize()
                 end
@@ -2825,11 +2870,22 @@ local Library = {
 
                     if Bool then
                         NewKeyText.Instance.Visible = true
-                        NewKeyText.Instance.TextTransparency = 1
-                        NewKeyText:Tween({TextTransparency = 0}, KeybindTweenInfo)
+                        if NewKeyText._nameLabel then
+                            NewKeyText._nameLabel.Instance.TextTransparency = 1
+                            NewKeyText._nameLabel:Tween({TextTransparency = 0}, KeybindTweenInfo)
+                        end
+                        if NewKeyText._keyLabel then
+                            NewKeyText._keyLabel.Instance.TextTransparency = 1
+                            NewKeyText._keyLabel:Tween({TextTransparency = 0}, KeybindTweenInfo)
+                        end
                         KeybindList:UpdateSize()
                     else
-                        NewKeyText:Tween({TextTransparency = 1}, KeybindTweenInfo)
+                        if NewKeyText._nameLabel then
+                            NewKeyText._nameLabel:Tween({TextTransparency = 1}, KeybindTweenInfo)
+                        end
+                        if NewKeyText._keyLabel then
+                            NewKeyText._keyLabel:Tween({TextTransparency = 1}, KeybindTweenInfo)
+                        end
                         KeybindList:UpdateSize()
                         task.delay(KeybindTweenInfo.Time, function()
                             if not NewKey.Showing then
@@ -5825,12 +5881,17 @@ function Library:Window(cfg)
 			end
 		end)
 
+		local wmGlowHidden = true
 		game:GetService("RunService").RenderStepped:Connect(function()
 			if not glowOn then
-				for _, l in wmGlowLayers do l.f.Visible = false end
-				for _, l in kbGlowLayers do l.f.Visible = false end
+				if not wmGlowHidden then
+					for _, l in wmGlowLayers do l.f.Visible = false end
+					for _, l in kbGlowLayers do l.f.Visible = false end
+					wmGlowHidden = true
+				end
 				return
 			end
+			wmGlowHidden = false
 			applyGlow(wmGlowLayers, wmInst, glowOn)
 			applyGlow(kbGlowLayers, kbInst, glowOn)
 		end)
@@ -6021,12 +6082,12 @@ cheat.utility = {} do
 			end
 		end)() end
 	local connection; connection = RunService.Heartbeat:Connect(LPH_NO_VIRTUALIZE(function(delta)
-		for _, func in pairs(cheat.connections.heartbeats) do
+		for _, func in cheat.connections.heartbeats do
 			func(delta)
 		end
 	end))
 	local connection1; connection1 = RunService.RenderStepped:Connect(LPH_NO_VIRTUALIZE(function(delta)
-		for _, func in pairs(cheat.connections.renderstepped) do
+		for _, func in cheat.connections.renderstepped do
 			func(delta)
 		end
 	end))
@@ -7814,7 +7875,7 @@ do
 		player_list[player] = {
 			premium = player.MembershipType == Enum.MembershipType.Premium,
 			friend = player:IsFriendsWith(LocalPlayer.UserId),
-			update_loop = cheat.utility.new_renderstepped(LPH_NO_VIRTUALIZE(function(delta)
+			update_loop = cheat.utility.new_heartbeat(LPH_NO_VIRTUALIZE(function(delta)
 				character = get_character(player)
 				if not character then return end
 				humanoid = _FindFirstChildOfClass(character, "Humanoid")
@@ -7889,7 +7950,7 @@ do
 
 				local health, max_health
 				if humanoid then
-					health, max_health = health, max_health
+					health, max_health = get_health(player, character, humanoid)
 				end
 
 				if not (mainpart) then continue end
@@ -7922,6 +7983,7 @@ end
 
 local aimbot_mode
 local target_part, target_player, target_collider
+local last_target_player, last_target_part, last_target_position, last_target_tick = nil, nil, nil, 0
 local silent_mode, silent_projectionoverride, silent_wallbang, silent_magicbullet = "None", false, false, false
 local silent_methods = {
 	["Raycast"]                    = false,
@@ -7930,9 +7992,101 @@ local silent_methods = {
 	["FindPartOnRay"]              = false,
 	["ScreenPointToRay"]           = false,
 	["ViewportPointToRay"]         = false,
-	["Mouse"]                      = false,  -- мышиные рейкасты
+	["Mouse"]                      = false,  -- Mouse.Hit / Mouse.Target
 	["Ray"]                        = false,  -- устаревший Ray API
+	["Camera"]                     = false,  -- Camera.CoordinateFrame спуфинг
 }
+
+-- =====================================================================
+-- АВТО-ДЕТЕКТОР МЕТОДОВ СТРЕЛЬБЫ
+-- При выборе "Auto" скрипт на 4 секунды слушает какие методы вызывает
+-- игра при стрельбе и автоматически включает только нужные.
+-- =====================================================================
+local autodetect_running = false
+local autodetect_dropdown_ref = nil -- ссылка на дропдаун для обновления
+
+local function run_autodetect(duration)
+	if autodetect_running then return end
+	autodetect_running = true
+
+	local detected = {}
+	for m in silent_methods do
+		detected[m] = 0
+	end
+
+	Library.Notification("Scanning methods ("..duration.."s)... shoot your weapon!", duration + 1, Color3.fromRGB(255, 200, 80))
+
+	-- На время сканирования включаем ВСЕ методы (чтобы __namecall хук ловил)
+	for m in silent_methods do
+		silent_methods[m] = true
+	end
+
+	-- Шпионские хуки на функции workspace / Camera
+	local spy_hooks = {}
+
+	local function spy_wrap(obj, method_name, key)
+		pcall(function()
+			local old; old = hookfunction(obj[method_name], newcclosure(function(self2, ...)
+				if not checkcaller() then
+					detected[key] = (detected[key] or 0) + 1
+				end
+				return old(self2, ...)
+			end))
+			spy_hooks[key] = {func = obj[method_name], old = old, obj = obj, method = method_name}
+		end)
+	end
+
+	spy_wrap(workspace, "Raycast", "Raycast")
+	spy_wrap(workspace, "FindPartOnRay", "FindPartOnRay")
+	spy_wrap(workspace, "FindPartOnRayWithIgnoreList", "FindPartOnRayWithIgnoreList")
+	spy_wrap(workspace, "FindPartOnRayWithWhitelist", "FindPartOnRayWithWhitelist")
+	spy_wrap(Camera, "ScreenPointToRay", "ScreenPointToRay")
+	spy_wrap(Camera, "ViewportPointToRay", "ViewportPointToRay")
+
+	-- Mouse.Hit/Target считаем через флаг (обрабатывается в хуке __index)
+	getgenv().__autodetect_mouse_spy = true
+	getgenv().__autodetect_mouse_count = 0
+
+	task.delay(duration, function()
+		-- Снимаем шпионские хуки
+		for key, data in spy_hooks do
+			pcall(function()
+				hookfunction(data.old, data.old) -- восстановление не нужно, hookfunction вернул old
+			end)
+		end
+		-- Простой способ: просто переставляем — при следующем вызове __namecall основной хук и так работает
+
+		detected["Mouse"] = getgenv().__autodetect_mouse_count or 0
+		getgenv().__autodetect_mouse_spy = false
+
+		-- Анализируем
+		local found_any = false
+		local result_parts = {}
+
+		for method, count in detected do
+			if count > 0 then
+				silent_methods[method] = true
+				found_any = true
+				table.insert(result_parts, method .. "(" .. count .. ")")
+			else
+				silent_methods[method] = false
+			end
+		end
+
+		if found_any then
+			Library.Notification("Auto-detect: " .. table.concat(result_parts, ", "), 6, Color3.fromRGB(100, 255, 100))
+		else
+			-- Фоллбэк: включаем все
+			for m in silent_methods do
+				silent_methods[m] = true
+			end
+			Library.Notification("No methods detected — enabled ALL as fallback. Try shooting during scan!", 6, Color3.fromRGB(255, 150, 80))
+		end
+
+		autodetect_running = false
+	end)
+end
+
 do
 	local aimsec = ui.sections.aimbot_main
 	local chksec = ui.sections.aimbot_main  -- "Checks" merged into Aimbot section
@@ -7955,9 +8109,9 @@ do
 	local hm_color     = Color3.new(1, 1, 1)
 	local hm_kill_color = Color3.fromRGB(220, 80, 80)
 	local hm_cur_color = Color3.new(1, 1, 1)
-	local hm_size      = 8
-	local hm_thick     = 1.5
-	local hm_duration  = 0.18
+	local hm_size      = 12
+	local hm_thick     = 2
+	local hm_duration  = 0.45
 	local hm_alpha     = 0
 	-- состояние kill effect
 	local ke_spawn_pos  = nil
@@ -8448,25 +8602,17 @@ do
 		update_hitlogs_position()
 
 		hit_detection = function(player, new_health, old_health)
-			if not target_player or player ~= target_player then
-				return
-			end
 			if new_health >= old_health then
 				return
 			end
-			-- hitmarker
-			if hm_enabled then
-				hm_active    = true
-				hm_timer     = 0
-				hm_is_kill   = (new_health <= 0)
-				hm_cur_color = hm_is_kill and hm_kill_color or hm_color
+
+			-- Для hitlogs: проверяем что это наша цель (текущая или последняя)
+			local is_our_target = (target_player and player == target_player)
+			if not is_our_target then
+				is_our_target = (last_target_player and player == last_target_player and (tick() - last_target_tick) < 2)
 			end
-			-- kill effect
-			if ke_enabled and (new_health <= 0) and target_part then
-				local pos3d = _WorldToViewportPoint(Camera, target_part.Position)
-				ke_spawn_pos = Vector2.new(pos3d.X, pos3d.Y)
-				ke_do_spawn  = true
-			end
+
+			if not is_our_target then return end
 			if not hit_logs then return end
 			show_hitlog(build_hitlog_text(
 				player.Name,
@@ -8479,6 +8625,7 @@ do
 	
 	do
 		chksec:Dropdown({Name = "Silent mode", Values = {
+			"Auto",
 			"Raycast",
 			"FindPartOnRayWithIgnoreList",
 			"FindPartOnRayWithWhitelist",
@@ -8486,13 +8633,31 @@ do
 			"ScreenPointToRay",
 			"ViewportPointToRay",
 			"Mouse",
+			"Camera",
 			"Ray"
 		}, Value = {}, Flag = "aimbot_silent_mode", Multi = true, Callback = function(tbl)
-			for i in silent_methods do
-				silent_methods[i] = false
-			end
+			-- Проверяем: выбран ли "Auto"?
+			local has_auto = false
 			for _, value in tbl do
-				silent_methods[value] = true
+				if value == "Auto" then
+					has_auto = true
+					break
+				end
+			end
+
+			if has_auto then
+				-- Запускаем автодетект на 4 секунды
+				run_autodetect(4)
+			else
+				-- Ручной выбор (как раньше)
+				for i in silent_methods do
+					silent_methods[i] = false
+				end
+				for _, value in tbl do
+					if silent_methods[value] ~= nil then
+						silent_methods[value] = true
+					end
+				end
 			end
 		end})
 		chksec:Toggle({Name = "Projection override", Value = false, Flag = "silent_projectionoverride", Callback = function(bool)
@@ -8567,10 +8732,10 @@ do
 		local offset = t * GLOW_RADIUS_PX
 		local fo = createRingFrame(1, GLOW_STROKE_THICKNESS, Color3.new(1,1,1), transp)
 		fo.Visible = false
-		fovGlowRings[#fovGlowRings+1] = {frame=fo, offset=offset, baseTransparency=transp}
+		fovGlowRings[#fovGlowRings+1] = {frame=fo, offset=offset, baseTransparency=transp, stroke=fo:FindFirstChildOfClass("UIStroke")}
 		local fi = createRingFrame(1, GLOW_STROKE_THICKNESS, Color3.new(1,1,1), transp)
 		fi.Visible = false
-		fovGlowRings[#fovGlowRings+1] = {frame=fi, offset=-offset, baseTransparency=transp}
+		fovGlowRings[#fovGlowRings+1] = {frame=fi, offset=-offset, baseTransparency=transp, stroke=fi:FindFirstChildOfClass("UIStroke")}
 	end
 
 	-- основное кольцо (тонкий лиловый как на скрине 2)
@@ -8608,6 +8773,10 @@ do
 
 			if target_part and target_collider then
 				indtxt = target_player.Name
+				last_target_player = target_player
+				last_target_part = target_part
+				last_target_position = target_part.Position
+				last_target_tick = tick()
 			end
 		else
 			target_part, target_player, target_collider = nil, nil, nil
@@ -8622,55 +8791,56 @@ do
 		local diameter     = new_fov_size * 2
 		local center       = UDim2.fromOffset(mpos.X, mpos.Y)
 
-		-- основное кольцо
+		-- основное кольцо (UIStroke кэшируем при первом использовании)
 		fovMainRing.Visible  = fov_show
-		fovMainRing.Position = center
-		fovMainRing.Size     = UDim2.fromOffset(diameter, diameter)
-		local ms = fovMainRing:FindFirstChildOfClass("UIStroke")
-		if ms then
-			ms.Color     = fov_color
-			ms.Thickness = fov_thickness
+		if fov_show then
+			fovMainRing.Position = center
+			fovMainRing.Size     = UDim2.fromOffset(diameter, diameter)
+			if not getgenv().__fov_ms then getgenv().__fov_ms = fovMainRing:FindFirstChildOfClass("UIStroke") end
+			local ms = getgenv().__fov_ms
+			if ms then ms.Color = fov_color; ms.Thickness = fov_thickness end
 		end
 
-		-- outline: тонкая обводка с двух сторон FOV-линии (снаружи и внутри)
+		-- outline
 		local showOut = fov_show and fov_outline
-		local outlineThickness = math.clamp(fov_outline_thick or 0.75, 0.5, 2)
-		-- Offset is half of both strokes so outline touches the FOV line instead of sitting away from it.
-		local outlineOffset = math.max(0.5, ((fov_thickness or 1) + outlineThickness) * 0.5)
-
-		fovOutRing1.Visible  = showOut
-		fovOutRing2.Visible  = showOut
-		fovOutRing1.Position = center
-		fovOutRing2.Position = center
-		fovOutRing1.Size     = UDim2.fromOffset(diameter + outlineOffset * 2, diameter + outlineOffset * 2)
-		fovOutRing2.Size     = UDim2.fromOffset(math.max(2, diameter - outlineOffset * 2), math.max(2, diameter - outlineOffset * 2))
-
-		local os1 = fovOutRing1:FindFirstChildOfClass("UIStroke")
-		if os1 then
-			os1.Color = fov_outline_color
-			os1.Thickness = outlineThickness
-			os1.Transparency = fov_outline_alpha
-		end
-		local os2 = fovOutRing2:FindFirstChildOfClass("UIStroke")
-		if os2 then
-			os2.Color = fov_outline_color
-			os2.Thickness = outlineThickness
-			os2.Transparency = fov_outline_alpha
+		fovOutRing1.Visible = showOut
+		fovOutRing2.Visible = showOut
+		if showOut then
+			local outlineThickness = math.clamp(fov_outline_thick or 0.75, 0.5, 2)
+			local outlineOffset = math.max(0.5, ((fov_thickness or 1) + outlineThickness) * 0.5)
+			fovOutRing1.Position = center
+			fovOutRing2.Position = center
+			fovOutRing1.Size = UDim2.fromOffset(diameter + outlineOffset * 2, diameter + outlineOffset * 2)
+			fovOutRing2.Size = UDim2.fromOffset(math.max(2, diameter - outlineOffset * 2), math.max(2, diameter - outlineOffset * 2))
+			if not getgenv().__fov_os1 then getgenv().__fov_os1 = fovOutRing1:FindFirstChildOfClass("UIStroke") end
+			if not getgenv().__fov_os2 then getgenv().__fov_os2 = fovOutRing2:FindFirstChildOfClass("UIStroke") end
+			local os1 = getgenv().__fov_os1
+			local os2 = getgenv().__fov_os2
+			if os1 then os1.Color = fov_outline_color; os1.Thickness = outlineThickness; os1.Transparency = fov_outline_alpha end
+			if os2 then os2.Color = fov_outline_color; os2.Thickness = outlineThickness; os2.Transparency = fov_outline_alpha end
 		end
 
 		-- glow: отдельный цвет + много тонких колец вокруг FOV
 		local showGlow = fov_show and fov_glow
-		for _, g in ipairs(fovGlowRings) do
-			g.frame.Visible  = showGlow and g.baseTransparency < 0.995
-			local d = math.max(2, diameter + g.offset * 2)
-			g.frame.Position = center
-			g.frame.Size     = UDim2.fromOffset(d, d)
-			local gs = g.frame:FindFirstChildOfClass("UIStroke")
-			if gs then
-				gs.Color = fov_glow_color
-				gs.Transparency = math.clamp(g.baseTransparency + (fov_glow_alpha - 0.960), 0, 1)
+		if showGlow then
+			for _, g in ipairs(fovGlowRings) do
+				g.frame.Visible  = g.baseTransparency < 0.995
+				local d = math.max(2, diameter + g.offset * 2)
+				g.frame.Position = center
+				g.frame.Size     = UDim2.fromOffset(d, d)
+				local gs = g.stroke
+				if gs then
+					gs.Color = fov_glow_color
+					gs.Transparency = math.clamp(g.baseTransparency + (fov_glow_alpha - 0.960), 0, 1)
+				end
 			end
+		elseif getgenv().__fov_glow_was_on then
+			for _, g in ipairs(fovGlowRings) do
+				g.frame.Visible = false
+			end
+			getgenv().__fov_glow_was_on = false
 		end
+		if showGlow then getgenv().__fov_glow_was_on = true end
 		if aimbot_enabled and aimbot_enabled_key and target_part and target_collider then
 			local new_pos = target_part.Position
 			if aimbot_mode == "Mouse" then
@@ -8702,7 +8872,7 @@ do
 	local ti_line_glow = false
 	local ti_bar_color = Library.Theme.accent  -- по дефолту цвет Accent меню, как у hitlogs
 
-	local W, H = 260, 90
+	local W, H = 260, 106
 	local TI_BAR_X = 82
 	local TI_BAR_W = W - TI_BAR_X - 8
 	local ti_x = 12
@@ -8813,6 +8983,7 @@ do
 	mkLbl("user", 10); local tiVUser = mkVal("-",    10)
 	mkLbl("hp",   26); local tiVHp   = mkVal("-",    26)
 	mkLbl("tool", 42); local tiVTool = mkVal("none", 42)
+	mkLbl("visible", 58); local tiVVis = mkVal("no", 58)
 
 	-- hp бар
 	local tiBarBg = Instance.new("Frame", tiCard)
@@ -8891,7 +9062,9 @@ do
 			local d = mp - tiDS
 			ti_x = tiDO.X + d.X
 			ti_y = tiDO.Y + d.Y
-			tiCard.Position = UDim2.fromOffset(ti_x, ti_y)
+			TargetInfoTweenService:Create(tiCard, TweenInfo.new(0.65, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out), {
+				Position = UDim2.fromOffset(ti_x, ti_y)
+			}):Play()
 			Library.Flags["ti_pos_x"] = math.floor(ti_x + 0.5)
 			Library.Flags["ti_pos_y"] = math.floor(ti_y + 0.5)
 		end
@@ -8933,6 +9106,8 @@ do
 				tiSetBar(0)
 			end
 			tiSetText(tiVTool, ti_show_tool and "weapon" or "none")
+			tiSetText(tiVVis, "visible")
+			tiVVis.TextColor3 = Color3.fromRGB(80, 255, 80)
 			return
 		end
 
@@ -8974,6 +9149,28 @@ do
 		else
 			tiSetText(tiVTool, "none")
 		end
+		-- Видимость цели
+		if char and target_part then
+			local vis_origin = Camera.CFrame.Position
+			local vis_dir = (target_part.Position - vis_origin)
+			local vis_params = RaycastParams.new()
+			vis_params.FilterType = Enum.RaycastFilterType.Exclude
+			local filter = {}
+			if LocalPlayer.Character then table.insert(filter, LocalPlayer.Character) end
+			if char then table.insert(filter, char) end
+			vis_params.FilterDescendantsInstances = filter
+			local vis_result = workspace:Raycast(vis_origin, vis_dir, vis_params)
+			if vis_result then
+				tiSetText(tiVVis, "not visible")
+				tiVVis.TextColor3 = Color3.fromRGB(255, 80, 80)
+			else
+				tiSetText(tiVVis, "visible")
+				tiVVis.TextColor3 = Color3.fromRGB(80, 255, 80)
+			end
+		else
+			tiSetText(tiVVis, "no target")
+			tiVVis.TextColor3 = Color3.fromRGB(134, 134, 134)
+		end
 	end))
 
 	-- Target Info UI
@@ -8999,6 +9196,8 @@ do
 	-- 4 линии хитмаркера
 	local hmLines = {}
 	local hmZero  = Vector2.new(0,0)
+	local hm_world_pos = nil  -- позиция хита в мире
+	local hm_screen_pos = nil -- кэшированная экранная позиция
 	for i = 1, 4 do
 		hmLines[i] = cheat.utility.new_drawing("Line", {
 			Visible   = false,
@@ -9020,7 +9219,21 @@ do
 		local t   = math.min(hm_timer / hm_duration, 1)
 		local fade = t
 
-		local center = Camera.ViewportSize / 2
+		-- Определяем позицию крестика
+		local center
+		if hm_world_pos then
+			-- Рисуем на позиции врага в мире
+			local pos3d, onScreen = _WorldToViewportPoint(Camera, hm_world_pos)
+			if onScreen then
+				center = Vector2.new(pos3d.X, pos3d.Y)
+				hm_screen_pos = center
+			else
+				center = hm_screen_pos or (Camera.ViewportSize / 2)
+			end
+		else
+			center = hm_screen_pos or (Camera.ViewportSize / 2)
+		end
+
 		local gap    = 3 + hm_size * 0.3 * t
 		local sz     = hm_size * (1 - t * 0.3)
 
@@ -9031,7 +9244,7 @@ do
 		for i, d in ipairs(dirs) do
 			hmLines[i].From         = center + d * gap
 			hmLines[i].To           = center + d * (gap + sz)
-			hmLines[i].Color        = hm_cur_color
+			hmLines[i].Color        = hm_cur_color or Color3.new(1, 1, 1)
 			hmLines[i].Thickness    = hm_thick
 			hmLines[i].Transparency = fade * 0.95
 			hmLines[i].Visible      = true
@@ -9039,6 +9252,7 @@ do
 
 		if t >= 1 then
 			hm_active = false
+			hm_world_pos = nil
 		end
 	end))
 
@@ -9267,6 +9481,7 @@ do
 		for i = 1, DE_CONFIG.SPARKLE_COUNT do task.spawn(function() task.wait(math.random()*0.2); de_sparkle(position) end) end
 		for i = 1, DE_CONFIG.RAY_COUNT do task.spawn(function() de_ray(position,(i/DE_CONFIG.RAY_COUNT)*math.pi*2+math.random()*0.3) end) end
 	end
+	getgenv().__de_createEffect = de_createEffect
 
 	-- подключаем к смерти игроков
 	local function de_connectCharacter(character, isLocal)
@@ -9275,11 +9490,48 @@ do
 		humanoid.Died:Connect(function()
 			local root = character:FindFirstChild("HumanoidRootPart") or character:FindFirstChild("Torso") or character:FindFirstChild("UpperTorso")
 			if root then
+				local pos = root.Position
+				-- Death particles (3D)
 				if (isLocal and DE_CONFIG.AFFECT_SELF) or (not isLocal and DE_CONFIG.AFFECT_OTHERS) then
-					de_createEffect(root.Position)
+					de_createEffect(pos)
+				end
+				-- Kill effect particles (2D Drawing) — при любом килле врага
+				if not isLocal and ke_enabled then
+					local pos3d, onScreen = _WorldToViewportPoint(Camera, pos)
+					if onScreen then
+						ke_spawn_pos = Vector2.new(pos3d.X, pos3d.Y)
+						ke_do_spawn = true
+					end
+				end
+				-- Hitmarker — крестик при любом килле врага
+				if not isLocal and hm_enabled then
+					hm_active = true
+					hm_timer = 0
+					hm_is_kill = true
+					hm_cur_color = hm_kill_color or Color3.fromRGB(220, 80, 80)
+					hm_world_pos = pos
 				end
 			end
 		end)
+		-- Hitmarker при хите (не килле) — через HealthChanged
+		if not isLocal and humanoid then
+			local prevHealth = humanoid.Health
+			humanoid.HealthChanged:Connect(function(newHealth)
+				if newHealth < prevHealth and newHealth > 0 then
+					if hm_enabled then
+						hm_active = true
+						hm_timer = 0
+						hm_is_kill = false
+						hm_cur_color = hm_color or Color3.new(1, 1, 1)
+						local head = character:FindFirstChild("Head") or character:FindFirstChild("HumanoidRootPart")
+						if head and head.Parent then
+							hm_world_pos = head.Position
+						end
+					end
+				end
+				prevHealth = newHealth
+			end)
+		end
 	end
 
 	local de_Players = game:GetService("Players")
@@ -10686,19 +10938,50 @@ local __newindex; __newindex = hookmetamethod(game, "__newindex", newcclosure(LP
 end)))
 
 local __index; __index = hookmetamethod(game, '__index', newcclosure(LPH_NO_VIRTUALIZE(function(self, key)
+	-- Быстрый выход: 99.9% вызовов отсеиваются здесь (дешевле checkcaller)
+	if key ~= "CFrame" and key ~= "CoordinateFrame" and key ~= "Hit" and key ~= "Target" then
+		return __index(self, key)
+	end
+
 	if checkcaller() then return __index(self, key) end
-	if key == 'CFrame' and (self == hrp or self == head) and desync_enabled and desync_enabled_key and old_cframe then
-		if self == hrp then
-			return old_cframe or _CFramenew()
+
+	-- ===== Desync CFrame spoofing =====
+	if key == "CFrame" then
+		if (self == hrp or self == head) and desync_enabled and desync_enabled_key and old_cframe then
+			if self == hrp then
+				return old_cframe or _CFramenew()
+			end
+			if self == head then
+				return old_cframe and old_cframe * _CFramenew(
+					0,
+					hrp.Size.Y / 2 + head.Size.Y / 2,
+					0
+				) or _CFramenew()
+			end
 		end
-		if self == head then
-			return old_cframe and old_cframe * _CFramenew(
-				0,
-				hrp.Size.Y / 2 + head.Size.Y / 2,
-				0
-			) or _CFramenew()
+		return __index(self, key)
+	end
+
+	-- ===== Camera.CoordinateFrame spoofing =====
+	if key == "CoordinateFrame" then
+		if self == Camera and silent_methods["Camera"] and aimbot_mode == "Silent"
+			and target_part and target_part.Parent then
+			local real_cf = __index(self, "CFrame")
+			return _CFramenew(real_cf.Position, target_part.Position)
+		end
+		return __index(self, key)
+	end
+
+	-- ===== Mouse.Hit / Mouse.Target spoofing =====
+	if self == Mouse and silent_methods["Mouse"] and aimbot_mode == "Silent"
+		and target_part and target_part.Parent then
+		if key == "Hit" then
+			return _CFramenew(target_part.Position)
+		else
+			return target_part
 		end
 	end
+
 	return __index(self, key)
 end)))
 
@@ -10724,16 +11007,8 @@ local __namecall; __namecall = hookmetamethod(game, "__namecall", newcclosure(LP
 		if method == "Raycast" then
 			local origin = args[1]
 			local direction = args[2]
-			local new_dir = silent_projectionoverride and (hitpos - origin) or (hitpos - origin).Unit * direction.Magnitude
-			if silent_wallbang and new_dir.Magnitude >= direction.Magnitude then
-				return {
-					Instance = hitpart,
-					Position = silent_magicbullet and _Vector3new(0/0, 0/0, 0/0) or hitpos,
-					Distance = (hitpos - args[1]).Magnitude,
-					Normal = (hitpos - orgpos).Unit,
-					Material = hitpart.Material
-				}
-			end
+			local to_target = hitpos - origin
+			local new_dir = to_target.Unit * direction.Magnitude
 			args[2] = new_dir
 			return __namecall(self, unpack(args))
 		end
