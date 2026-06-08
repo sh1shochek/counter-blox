@@ -8113,7 +8113,7 @@ do
 	local hm_thick     = 2
 	local hm_duration  = 0.45
 	local hm_alpha     = 0
-	-- состояние kill effect
+	-- состояние kill effect (теперь не используется, оставлено для совместимости)
 	local ke_spawn_pos  = nil
 	local ke_do_spawn   = false
 	-- FOV style
@@ -8612,6 +8612,17 @@ do
 				is_our_target = (last_target_player and player == last_target_player and (tick() - last_target_tick) < 2)
 			end
 
+			-- Kill Effect - только если МЫ убили (наша цель умерла)
+			if new_health <= 0 and ke_enabled and is_our_target and player ~= LocalPlayer then
+				local char = player.Character
+				if char then
+					local root = char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Head") or char:FindFirstChild("UpperTorso") or char:FindFirstChild("Torso")
+					if root then
+						ke_createEffect(root.Position + Vector3.new(0, 2, 0))
+					end
+				end
+			end
+			
 			if not is_our_target then return end
 			if not hit_logs then return end
 			show_hitlog(build_hitlog_text(
@@ -9256,79 +9267,115 @@ do
 		end
 	end))
 
-	-- Kill Effect (белые светящиеся частицы из Drawing Circle)
+	-- Kill Effect (теперь как Death Effect - 3D частицы)
 	ke_enabled  = false
-	local KE_COUNT    = 18
-	local ke_color    = Color3.new(1, 1, 1)
-	local ke_size_min = 3
-	local ke_size_max = 10
-	local ke_speed    = 80
-	local ke_life_min = 0.4
-	local ke_life_max = 0.8
-	local ke_particles = {}
-	for i = 1, KE_COUNT do
-		ke_particles[i] = {
-			obj = cheat.utility.new_drawing("Circle", {
-				Filled      = true,
-				Visible     = false,
-				Color       = Color3.new(1, 1, 1),
-				ZIndex      = 9,
-				Radius      = 4,
-				Transparency = 1,
-			}),
-			alive = false,
-			x=0, y=0, vx=0, vy=0,
-			life=0, maxLife=0, size=0,
-		}
+
+	local KE_CONFIG = {
+		MAIN_COLOR    = Color3.fromRGB(255, 255, 255),
+		BRIGHT_COLOR  = Color3.fromRGB(255, 255, 255),
+		GLOW_COLOR    = Color3.fromRGB(255, 255, 255),
+		PARTICLE_COUNT = 40,
+		PARTICLE_SIZE_MIN = 0.15,
+		PARTICLE_SIZE_MAX = 0.4,
+		PARTICLE_SPEED = 35,
+		PARTICLE_LIFETIME = 0.7,
+		LIGHT_CHANCE  = 0.3,
+		LIGHT_BRIGHTNESS = 1,
+		LIGHT_RANGE   = 2.5,
+		SPARKLE_COUNT = 8,
+		STAR_COUNT    = 20,
+		RAY_COUNT     = 10,
+		RAY_LENGTH    = 6,
+		RAY_LIFETIME  = 0.35,
+	}
+
+	local TweenSvc2 = game:GetService("TweenService")
+
+	local function ke_particle(position)
+		local sz = KE_CONFIG.PARTICLE_SIZE_MIN + math.random() * (KE_CONFIG.PARTICLE_SIZE_MAX - KE_CONFIG.PARTICLE_SIZE_MIN)
+		local part = Instance.new("Part")
+		part.Shape = Enum.PartType.Ball; part.Size = Vector3.new(sz,sz,sz)
+		part.Material = Enum.Material.Neon
+		part.Color = math.random() > 0.3 and KE_CONFIG.MAIN_COLOR or KE_CONFIG.BRIGHT_COLOR
+		part.Anchored = false; part.CanCollide = false; part.CastShadow = false
+		part.Position = position + Vector3.new((math.random()-0.5)*2,(math.random()-0.5)*2+1,(math.random()-0.5)*2)
+		part.Parent = workspace
+		local light
+		if math.random() < KE_CONFIG.LIGHT_CHANCE then
+			light = Instance.new("PointLight")
+			light.Brightness = KE_CONFIG.LIGHT_BRIGHTNESS; light.Range = KE_CONFIG.LIGHT_RANGE
+			light.Color = KE_CONFIG.GLOW_COLOR; light.Parent = part
+		end
+		local dir = Vector3.new((math.random()-0.5)*2,(math.random()-0.5)*2,(math.random()-0.5)*2).Unit
+		local bv = Instance.new("BodyVelocity")
+		bv.Velocity = dir*(KE_CONFIG.PARTICLE_SPEED*(0.5+math.random()*0.8)); bv.MaxForce = Vector3.new(1e6,1e6,1e6); bv.Parent = part
+		task.delay(0.1, function() if bv and bv.Parent then TweenSvc2:Create(bv,TweenInfo.new(0.4),{Velocity=Vector3.new(0,-5,0)}):Play() end end)
+		local lt = KE_CONFIG.PARTICLE_LIFETIME*(0.7+math.random()*0.6)
+		TweenSvc2:Create(part,TweenInfo.new(lt,Enum.EasingStyle.Quad,Enum.EasingDirection.In),{Transparency=1,Size=Vector3.new(0.02,0.02,0.02)}):Play()
+		if light then TweenSvc2:Create(light,TweenInfo.new(lt),{Brightness=0,Range=0}):Play() end
+		task.delay(lt+0.05, function() if part then part:Destroy() end end)
 	end
 
-	local function spawnKillEffect(screenPos)
+	local function ke_star(position)
+		local part = Instance.new("Part")
+		part.Size = Vector3.new(0.3,0.3,0.3); part.Transparency = 1; part.Anchored = true
+		part.CanCollide = false; part.CastShadow = false
+		part.Position = position + Vector3.new(0,1,0); part.Parent = workspace
+		local att = Instance.new("Attachment"); att.Parent = part
+		local em = Instance.new("ParticleEmitter")
+		em.Texture = "rbxassetid://2273224484"
+		em.Color = ColorSequence.new(Color3.fromRGB(255,255,255))
+		em.Size = NumberSequence.new({NumberSequenceKeypoint.new(0,0),NumberSequenceKeypoint.new(0.2,0.6),NumberSequenceKeypoint.new(0.7,0.4),NumberSequenceKeypoint.new(1,0)})
+		em.Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0,0.2),NumberSequenceKeypoint.new(0.5,0),NumberSequenceKeypoint.new(1,1)})
+		em.Lifetime = NumberRange.new(0.7,1.2); em.Rate = 0; em.Speed = NumberRange.new(10,22)
+		em.SpreadAngle = Vector2.new(180,180); em.Rotation = NumberRange.new(0,360)
+		em.RotSpeed = NumberRange.new(-100,100); em.LightEmission = 1; em.LightInfluence = 0
+		em.Acceleration = Vector3.new(0,-10,0); em.Orientation = Enum.ParticleOrientation.FacingCamera; em.Parent = att
+		em:Emit(KE_CONFIG.STAR_COUNT)
+		local l = Instance.new("PointLight"); l.Brightness = 2; l.Range = 6; l.Color = KE_CONFIG.MAIN_COLOR; l.Parent = part
+		TweenSvc2:Create(l,TweenInfo.new(0.8),{Brightness=0,Range=0}):Play()
+		task.delay(1.5, function() if part then part:Destroy() end end)
+	end
+
+	local function ke_sparkle(position)
+		local part = Instance.new("Part")
+		part.Size = Vector3.new(0.2,0.2,0.2); part.Anchored = true; part.CanCollide = false
+		part.CastShadow = false; part.Transparency = 1
+		part.Position = position + Vector3.new((math.random()-0.5)*8,(math.random()-0.5)*6+1,(math.random()-0.5)*8)
+		part.Parent = workspace
+		local bb = Instance.new("BillboardGui"); bb.Size = UDim2.new(0,0,0,0); bb.AlwaysOnTop = false; bb.LightInfluence = 0; bb.Parent = part
+		local img = Instance.new("ImageLabel"); img.Size = UDim2.new(1,0,1,0); img.BackgroundTransparency = 1
+		pcall(function() img.Image = "rbxassetid://241876428" end)
+		pcall(function() img.ImageColor3 = KE_CONFIG.BRIGHT_COLOR end)
+		img.Parent = bb
+		local ts = 80+math.random(0,60)
+		TweenSvc2:Create(bb,TweenInfo.new(0.15,Enum.EasingStyle.Back,Enum.EasingDirection.Out),{Size=UDim2.new(0,ts,0,ts)}):Play()
+		task.delay(0.2,function()
+			TweenSvc2:Create(bb,TweenInfo.new(0.4),{Size=UDim2.new(0,0,0,0)}):Play()
+			TweenSvc2:Create(img,TweenInfo.new(0.4),{ImageTransparency=1}):Play()
+			task.delay(0.45,function() if part then part:Destroy() end end)
+		end)
+	end
+
+	local function ke_ray(position, angle)
+		local length = KE_CONFIG.RAY_LENGTH*(0.7+math.random()*0.6)
+		local ray = Instance.new("Part"); ray.Size = Vector3.new(0.1,0.1,0.5)
+		ray.Material = Enum.Material.Neon; ray.Color = KE_CONFIG.BRIGHT_COLOR
+		ray.Anchored = true; ray.CanCollide = false; ray.CastShadow = false; ray.Transparency = 0.1
+		local dir = Vector3.new(math.cos(angle)*math.cos(math.random()*math.pi-math.pi/2),math.sin(math.random()*math.pi-math.pi/2),math.sin(angle)*math.cos(math.random()*math.pi-math.pi/2)).Unit
+		ray.CFrame = CFrame.lookAt(position,position+dir)*CFrame.new(0,0,-length/2)
+		ray.Size = Vector3.new(0.1,0.1,length); ray.Parent = workspace
+		TweenSvc2:Create(ray,TweenInfo.new(KE_CONFIG.RAY_LIFETIME,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),{Size=Vector3.new(0.01,0.01,length*1.5),Transparency=1}):Play()
+		task.delay(KE_CONFIG.RAY_LIFETIME+0.05,function() if ray then ray:Destroy() end end)
+	end
+
+	local function ke_createEffect(position)
 		if not ke_enabled then return end
-		for _, p in ke_particles do
-			if not p.alive then
-				local angle   = math.random() * math.pi * 2
-				local speed   = ke_speed * (0.5 + math.random() * 0.8)
-				p.x       = screenPos.X
-				p.y       = screenPos.Y
-				p.vx      = math.cos(angle) * speed
-				p.vy      = math.sin(angle) * speed - 60
-				p.maxLife = ke_life_min + math.random() * (ke_life_max - ke_life_min)
-				p.life    = 0
-				p.size    = ke_size_min + math.random() * (ke_size_max - ke_size_min)
-				p.alive   = true
-			end
-		end
+		for i = 1, KE_CONFIG.PARTICLE_COUNT do task.spawn(ke_particle, position) end
+		ke_star(position)
+		for i = 1, KE_CONFIG.SPARKLE_COUNT do task.spawn(function() task.wait(math.random()*0.2); ke_sparkle(position) end) end
+		for i = 1, KE_CONFIG.RAY_COUNT do task.spawn(function() ke_ray(position,(i/KE_CONFIG.RAY_COUNT)*math.pi*2+math.random()*0.3) end) end
 	end
-
-	cheat.utility.new_renderstepped(LPH_NO_VIRTUALIZE(function(delta)
-		-- обрабатываем запрос на спавн частиц из hit_detection
-		if ke_do_spawn and ke_spawn_pos then
-			spawnKillEffect(ke_spawn_pos)
-			ke_do_spawn = false
-			ke_spawn_pos = nil
-		end
-		for _, p in ke_particles do
-			if p.alive then
-				p.life = p.life + delta
-				local t = p.life / p.maxLife
-				if t >= 1 then
-					p.alive    = false
-					p.obj.Visible = false
-				else
-					p.x = p.x + p.vx * delta
-					p.y = p.y + p.vy * delta
-					p.vy = p.vy + 120 * delta  -- гравитация
-					p.obj.Position    = Vector2.new(p.x, p.y)
-					p.obj.Radius      = p.size * (1 - t * 0.5)
-					p.obj.Color       = ke_color
-					p.obj.Transparency = t * 0.95
-					p.obj.Visible     = true
-				end
-			else
-				p.obj.Visible = false
-			end
-		end
-	end))
 
 	-- Hitmarker UI
 	do
@@ -9349,24 +9396,81 @@ do
 			hm_duration = v / 1000
 		end})
 
-		-- ---- Kill effect (2D частицы при убийстве) ----
+		-- ---- Kill effect (теперь как Death Effect) ----
 		sec:Toggle({Name = "Kill particles", Value = false, Flag = "ke_enabled", Callback = function(bool)
 			ke_enabled = bool
-		end}):Colorpicker({Name = "Particle color", Value = Color3.new(1,1,1), Usealpha = false, Flag = "ke_color", Callback = function(color)
-			ke_color = color.c
+		end}):Colorpicker({Name = "Main color", Value = Color3.fromRGB(255,255,255), Usealpha = false, Flag = "ke_main_color", Callback = function(color)
+			KE_CONFIG.MAIN_COLOR = color.c
 		end})
-		sec:Slider({Name = "Particle speed", Min = 10, Max = 200, Float = 5, Value = 80, Flag = "ke_speed", Callback = function(v)
-			ke_speed = v
+		local ke_use_bright = false
+		do
+			local t = sec:Toggle({Name = "Secondary color", Value = false, Flag = "ke_bright_tog", Callback = function(bool)
+				ke_use_bright = bool
+				if not bool then
+					KE_CONFIG.BRIGHT_COLOR = KE_CONFIG.MAIN_COLOR
+				else
+					if Library and Library.Flags and Library.Flags["ke_bright_color"] then
+						KE_CONFIG.BRIGHT_COLOR = Library.Flags["ke_bright_color"].Color or KE_CONFIG.MAIN_COLOR
+					end
+				end
+			end})
+			t:Colorpicker({Name = "Secondary color", Value = Color3.fromRGB(255,255,255), Usealpha = false, Flag = "ke_bright_color", Callback = function(color)
+				if ke_use_bright then
+					KE_CONFIG.BRIGHT_COLOR = color.c
+				end
+			end})
+		end
+
+		sec:Slider({Name = "Ball count", Min = 5, Max = 80, Float = 1, Value = 40, Flag = "ke_particle_count", Callback = function(v)
+			KE_CONFIG.PARTICLE_COUNT = v
 		end})
-		sec:Slider({Name = "Particle min size", Min = 1, Max = 20, Float = 1, Value = 3, Flag = "ke_size_min", Callback = function(v)
-			ke_size_min = v
+		sec:Slider({Name = "Ball speed", Min = 5, Max = 80, Float = 1, Value = 35, Flag = "ke_particle_speed", Callback = function(v)
+			KE_CONFIG.PARTICLE_SPEED = v
 		end})
-		sec:Slider({Name = "Particle max size", Min = 1, Max = 30, Float = 1, Value = 10, Flag = "ke_size_max", Callback = function(v)
-			ke_size_max = v
+		sec:Slider({Name = "Ball lifetime", Min = 1, Max = 20, Float = 1, Value = 7, Flag = "ke_particle_life", Callback = function(v)
+			KE_CONFIG.PARTICLE_LIFETIME = v / 10
 		end})
-		sec:Slider({Name = "Particle lifetime (ms)", Min = 100, Max = 2000, Float = 50, Value = 600, Flag = "ke_lifetime", Callback = function(v)
-			ke_life_min = v / 1000 * 0.5
-			ke_life_max = v / 1000
+		sec:Slider({Name = "Ray count", Min = 0, Max = 20, Float = 1, Value = 10, Flag = "ke_ray_count", Callback = function(v)
+			KE_CONFIG.RAY_COUNT = v
+		end})
+		sec:Slider({Name = "Ray length", Min = 1, Max = 20, Float = 1, Value = 6, Flag = "ke_ray_length", Callback = function(v)
+			KE_CONFIG.RAY_LENGTH = v
+		end})
+		sec:Slider({Name = "Sparkle count", Min = 0, Max = 20, Float = 1, Value = 8, Flag = "ke_sparkle_count", Callback = function(v)
+			KE_CONFIG.SPARKLE_COUNT = v
+		end})
+		sec:Slider({Name = "Star count", Min = 0, Max = 50, Float = 1, Value = 20, Flag = "ke_star_count", Callback = function(v)
+			KE_CONFIG.STAR_COUNT = v
+		end})
+		sec:Button({Name = "Test kill effect", Callback = function()
+			-- Находим ближайшего игрока
+			local closest, dist = nil, math.huge
+			local lp = game:GetService("Players").LocalPlayer
+			local camPos = workspace.CurrentCamera.CFrame.Position
+			for _, plr in game:GetService("Players"):GetPlayers() do
+				if plr ~= lp and plr.Character then
+					local hrp = plr.Character:FindFirstChild("HumanoidRootPart") or plr.Character:FindFirstChild("Head")
+					if hrp then
+						local d = (hrp.Position - camPos).Magnitude
+						if d < dist then
+							dist = d
+							closest = plr
+						end
+					end
+				end
+			end
+			if closest and closest.Character then
+				local root = closest.Character:FindFirstChild("HumanoidRootPart") or closest.Character:FindFirstChild("Head")
+				if root then
+					local was = ke_enabled
+					ke_enabled = true
+					ke_createEffect(root.Position + Vector3.new(0,2,0))
+					ke_enabled = was
+					Library.Notification("Kill effect test on " .. closest.Name, 2)
+				end
+			else
+				Library.Notification("No players found", 2)
+			end
 		end})
 	end
 
@@ -9495,14 +9599,7 @@ do
 				if (isLocal and DE_CONFIG.AFFECT_SELF) or (not isLocal and DE_CONFIG.AFFECT_OTHERS) then
 					de_createEffect(pos)
 				end
-				-- Kill effect particles (2D Drawing) — при любом килле врага
-				if not isLocal and ke_enabled then
-					local pos3d, onScreen = _WorldToViewportPoint(Camera, pos)
-					if onScreen then
-						ke_spawn_pos = Vector2.new(pos3d.X, pos3d.Y)
-						ke_do_spawn = true
-					end
-				end
+				-- Kill effect теперь срабатывает через hit_detection (надежнее)
 				-- Hitmarker — крестик при любом килле врага
 				if not isLocal and hm_enabled then
 					hm_active = true
@@ -9550,12 +9647,12 @@ do
 
 		sec:Toggle({Name = "Death effect", Value = false, Flag = "de_enabled", Callback = function(bool)
 			de_enabled = bool
-		end}):Colorpicker({Name = "DE Main color", Value = Color3.fromRGB(255,100,200), Usealpha = false, Flag = "de_main_color", Callback = function(color)
+		end}):Colorpicker({Name = "Main color", Value = Color3.fromRGB(255,100,200), Usealpha = false, Flag = "de_main_color", Callback = function(color)
 			DE_CONFIG.MAIN_COLOR = color.c
 		end})
 		local de_use_bright = false
 		do
-			local t = sec:Toggle({Name = "DE Secondary color", Value = false, Flag = "de_bright_tog", Callback = function(bool)
+			local t = sec:Toggle({Name = "Secondary color", Value = false, Flag = "de_bright_tog", Callback = function(bool)
 				de_use_bright = bool
 				if not bool then
 					DE_CONFIG.BRIGHT_COLOR = DE_CONFIG.MAIN_COLOR
@@ -9565,32 +9662,32 @@ do
 					end
 				end
 			end})
-			t:Colorpicker({Name = "DE Secondary color", Value = Color3.fromRGB(255,200,230), Usealpha = false, Flag = "de_bright_color", Callback = function(color)
+			t:Colorpicker({Name = "Secondary color", Value = Color3.fromRGB(255,200,230), Usealpha = false, Flag = "de_bright_color", Callback = function(color)
 				if de_use_bright then
 					DE_CONFIG.BRIGHT_COLOR = color.c
 				end
 			end})
 		end
 
-		sec:Slider({Name = "DE Ball count", Min = 5, Max = 80, Float = 1, Value = 40, Flag = "de_particle_count", Callback = function(v)
+		sec:Slider({Name = "Ball count", Min = 5, Max = 80, Float = 1, Value = 40, Flag = "de_particle_count", Callback = function(v)
 			DE_CONFIG.PARTICLE_COUNT = v
 		end})
-		sec:Slider({Name = "DE Ball speed", Min = 5, Max = 80, Float = 1, Value = 35, Flag = "de_particle_speed", Callback = function(v)
+		sec:Slider({Name = "Ball speed", Min = 5, Max = 80, Float = 1, Value = 35, Flag = "de_particle_speed", Callback = function(v)
 			DE_CONFIG.PARTICLE_SPEED = v
 		end})
-		sec:Slider({Name = "DE Ball lifetime (x0.1s)", Min = 1, Max = 20, Float = 1, Value = 7, Flag = "de_particle_life", Callback = function(v)
+		sec:Slider({Name = "Ball lifetime", Min = 1, Max = 20, Float = 1, Value = 7, Flag = "de_particle_life", Callback = function(v)
 			DE_CONFIG.PARTICLE_LIFETIME = v / 10
 		end})
-		sec:Slider({Name = "DE Ray count", Min = 0, Max = 20, Float = 1, Value = 10, Flag = "de_ray_count", Callback = function(v)
+		sec:Slider({Name = "Ray count", Min = 0, Max = 20, Float = 1, Value = 10, Flag = "de_ray_count", Callback = function(v)
 			DE_CONFIG.RAY_COUNT = v
 		end})
-		sec:Slider({Name = "DE Ray length", Min = 1, Max = 20, Float = 1, Value = 6, Flag = "de_ray_length", Callback = function(v)
+		sec:Slider({Name = "Ray length", Min = 1, Max = 20, Float = 1, Value = 6, Flag = "de_ray_length", Callback = function(v)
 			DE_CONFIG.RAY_LENGTH = v
 		end})
-		sec:Slider({Name = "DE Sparkle count", Min = 0, Max = 20, Float = 1, Value = 8, Flag = "de_sparkle_count", Callback = function(v)
+		sec:Slider({Name = "Sparkle count", Min = 0, Max = 20, Float = 1, Value = 8, Flag = "de_sparkle_count", Callback = function(v)
 			DE_CONFIG.SPARKLE_COUNT = v
 		end})
-		sec:Slider({Name = "DE Star count", Min = 0, Max = 50, Float = 1, Value = 20, Flag = "de_star_count", Callback = function(v)
+		sec:Slider({Name = "Star count", Min = 0, Max = 50, Float = 1, Value = 20, Flag = "de_star_count", Callback = function(v)
 			DE_CONFIG.STAR_COUNT = v
 		end})
 		sec:Button({Name = "Test death effect", Callback = function()
