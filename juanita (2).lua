@@ -83,173 +83,216 @@ makefolder(ThemeFolder)
 
 -- ---- Loading screen ----
 do
-	local CoreGui   = cloneref and cloneref(game:GetService("CoreGui")) or game:GetService("CoreGui")
-	local TweenSvc  = game:GetService("TweenService")
-	local RS        = game:GetService("RunService")
+	local Players  = game:GetService("Players")
+	local CoreGui  = cloneref and cloneref(game:GetService("CoreGui")) or game:GetService("CoreGui")
+	local TweenSvc = game:GetService("TweenService")
+	local HttpSvc  = game:GetService("HttpService")
+	local RS       = game:GetService("RunService")
 	local startTime = tick()
 
-	local C_BG      = Color3.fromRGB(12, 12, 12)
-	local C_OUTLINE = Color3.fromRGB(51, 51, 51)
-	local C_ACCENT  = Color3.fromRGB(176, 176, 209)
-	local C_TEXT    = Color3.fromRGB(208, 207, 227)
-	local C_INACTIVE= Color3.fromRGB(134, 134, 134)
-	local C_ELEM    = Color3.fromRGB(39, 39, 39)
+	local C_BG     = Color3.fromRGB(13, 13, 13)
+	local C_BORDER = Color3.fromRGB(176, 176, 209)
+	local C_ACCENT = Color3.fromRGB(176, 176, 209)
+	local C_TEXT   = Color3.fromRGB(220, 220, 230)
+	local C_MUTED  = Color3.fromRGB(130, 130, 140)
+	local C_ERR    = Color3.fromRGB(210, 70, 70)
+	local C_OK     = Color3.fromRGB(220, 220, 230)
 
-	local sg = Instance.new("ScreenGui")
-	sg.Name           = "LoaderGui"
-	sg.ResetOnSpawn   = false
-	sg.DisplayOrder   = 9999
-	sg.IgnoreGuiInset = true
-	pcall(function() sg.Parent = CoreGui end)
-	if not sg.Parent then
-		sg.Parent = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
+	-- проверка
+	local readyOk  = true
+	local readyMsg = ""
+	if not (isfile and writefile and makefolder) then readyOk=false; readyMsg="missing executor api" end
+	if readyOk and not Players.LocalPlayer then readyOk=false; readyMsg="no localplayer" end
+
+	-- ── СНАЧАЛА ГРУЗИМ ВСЁ, ПОТОМ ПОКАЗЫВАЕМ ──
+	local loaderFont = nil
+	local iconAsset  = ""
+
+	local function downloadFile(url, path)
+		if isfile(path) then return true end
+		local ok, data = pcall(game.HttpGet, game, url)
+		if ok and data and #data > 100 then
+			writefile(path, data)
+			return true
+		end
+		return false
 	end
 
-	-- карточка: 320×78, одна тонкая обводка
-	local card = Instance.new("Frame", sg)
-	card.Size             = UDim2.fromOffset(320, 78)
-	card.AnchorPoint      = Vector2.new(0.5, 0.5)
-	card.Position         = UDim2.fromScale(0.5, 0.5)
-	card.BackgroundColor3 = C_BG
-	card.BorderSizePixel  = 0
-	card.ZIndex           = 2
-	Instance.new("UICorner", card).CornerRadius = UDim.new(0, 4)
-	local stroke = Instance.new("UIStroke", card)
-	stroke.Color              = C_OUTLINE
-	stroke.Thickness          = 1
-	stroke.ApplyStrokeMode    = Enum.ApplyStrokeMode.Border
+	-- иконка
+	local iconPath = "moneyblox\\icon.png"
+	downloadFile(
+		"https://raw.githubusercontent.com/sh1shochek/frost.vip/main/assets/icon.png",
+		iconPath
+	)
+	if isfile(iconPath) then
+		local ok, a = pcall(getcustomasset, iconPath)
+		if ok then iconAsset = a end
+	end
 
-	-- аватарка (загружаем с url, сохраняем локально, грузим как asset)
-	local ghost = Instance.new("ImageLabel", card)
-	ghost.Size                   = UDim2.fromOffset(54, 54)
-	ghost.Position               = UDim2.fromOffset(8, 10)
-	ghost.BackgroundTransparency = 1
-	ghost.Image                  = ""
-	ghost.ScaleType              = Enum.ScaleType.Fit
-	ghost.ZIndex                 = 3
-	Instance.new("UICorner", ghost).CornerRadius = UDim.new(0, 4)
-	-- грузим картинку асинхронно чтобы не тормозить лоадер
-	task.spawn(function()
-		local avatarPath = "moneyblox\\avatar.png"
-		-- ЗАМЕНИ ССЫЛКУ на прямую ссылку на картинку (GitHub raw / Discord CDN)
-		local AVATAR_URL = "https://cdn.discordapp.com/attachments/999665529738502244/1511435837798088755/ab2c3c1693b6b333f9a6fe641d39d13d-removebg-preview.png"
-		if not isfile(avatarPath) then
-			local ok, data = pcall(game.HttpGet, game, AVATAR_URL)
-			if ok and data and #data > 100 then
-				writefile(avatarPath, data)
-			end
+	-- шрифт TTF
+	local TTF  = FontsFolder .. "TahomaXP.ttf"
+	local JSON = FontsFolder .. "TahomaXP.json"
+	downloadFile(
+		"https://raw.githubusercontent.com/sh1shochek/frost.vip/main/assets/windows-xp-tahoma.ttf",
+		TTF
+	)
+	if isfile(TTF) then
+		if not isfile(JSON) then
+			local fd = {
+				name  = "TahomaXP",
+				faces = {{ name="Regular", weight=400, style="normal", assetId=getcustomasset(TTF) }}
+			}
+			writefile(JSON, HttpSvc:JSONEncode(fd))
 		end
-		if isfile(avatarPath) then
-			local asset = getcustomasset(avatarPath)
-			ghost.Image = asset
+		local ok, f = pcall(Font.new, getcustomasset(JSON))
+		if ok and f then loaderFont = f end
+	end
+	-- ─────────────────────────────────────────────
+
+	-- GUI создаём ПОСЛЕ загрузки
+	local sg = Instance.new("ScreenGui")
+	sg.Name = "FrostLoaderGui"; sg.ResetOnSpawn = false
+	sg.DisplayOrder = 9999; sg.IgnoreGuiInset = true
+	pcall(function() sg.Parent = CoreGui end)
+	if not sg.Parent then sg.Parent = Players.LocalPlayer:WaitForChild("PlayerGui") end
+
+	local W, H   = 280, 76
+	local ICON_S = 46
+	local PAD    = 10
+	local TEXT_X = PAD + ICON_S + 10
+
+	-- карточка без скругления (острые углы)
+	local card = Instance.new("Frame", sg)
+	card.Size = UDim2.fromOffset(W, H)
+	card.AnchorPoint = Vector2.new(0.5, 0.5)
+	card.Position = UDim2.new(0.5, 0, 0.5, 0)
+	card.BackgroundColor3 = C_BG
+	card.BorderSizePixel = 0
+	card.ZIndex = 2
+
+	local stroke = Instance.new("UIStroke", card)
+	stroke.Color = C_BORDER
+	stroke.Thickness = 1
+	stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+
+	-- иконка слева
+	local imgLabel = Instance.new("ImageLabel", card)
+	imgLabel.Size = UDim2.fromOffset(ICON_S, ICON_S)
+	imgLabel.Position = UDim2.fromOffset(PAD, math.floor((H - ICON_S) / 2))
+	imgLabel.BackgroundTransparency = 1
+	imgLabel.Image = iconAsset
+	imgLabel.ScaleType = Enum.ScaleType.Fit
+	imgLabel.ZIndex = 3
+
+	-- loading...
+	local lblTitle = Instance.new("TextLabel", card)
+	lblTitle.Size = UDim2.fromOffset(W - TEXT_X - 8, 22)
+	lblTitle.Position = UDim2.fromOffset(TEXT_X, 12)
+	lblTitle.BackgroundTransparency = 1
+	lblTitle.Text = "loading..."
+	lblTitle.TextSize = 15
+	lblTitle.TextColor3 = C_TEXT
+	lblTitle.TextXAlignment = Enum.TextXAlignment.Left
+	lblTitle.ZIndex = 3
+	if loaderFont then lblTitle.FontFace = loaderFont
+	else lblTitle.Font = Enum.Font.Code end
+
+	-- стадия
+	local lblStage = Instance.new("TextLabel", card)
+	lblStage.Size = UDim2.fromOffset(W - TEXT_X - 8, 16)
+	lblStage.Position = UDim2.fromOffset(TEXT_X, 32)
+	lblStage.BackgroundTransparency = 1
+	lblStage.Text = "Initializing"
+	lblStage.TextSize = 12
+	lblStage.TextColor3 = C_MUTED
+	lblStage.TextXAlignment = Enum.TextXAlignment.Left
+	lblStage.ZIndex = 3
+	if loaderFont then lblStage.FontFace = loaderFont
+	else lblStage.Font = Enum.Font.Code end
+
+	-- прогресс-бар
+	local BAR_W = W - TEXT_X - 8
+	local barBg = Instance.new("Frame", card)
+	barBg.Size = UDim2.fromOffset(BAR_W, 3)
+	barBg.Position = UDim2.fromOffset(TEXT_X, H - 11)
+	barBg.BackgroundColor3 = Color3.fromRGB(35, 35, 40)
+	barBg.BorderSizePixel = 0
+	barBg.ZIndex = 3
+
+	local barFill = Instance.new("Frame", barBg)
+	barFill.Size = UDim2.fromOffset(0, 3)
+	barFill.BackgroundColor3 = C_ACCENT
+	barFill.BorderSizePixel = 0
+	barFill.ZIndex = 4
+
+	-- анимация точек
+	local dotN = 0
+	local dotConn = RS.Heartbeat:Connect(function()
+		dotN = (dotN + 1) % 4
+		if lblTitle and lblTitle.Parent then
+			lblTitle.Text = "loading" .. string.rep(".", dotN == 0 and 1 or dotN)
 		end
 	end)
 
-	-- "loading."
-	local title = Instance.new("TextLabel", card)
-	title.Size                   = UDim2.fromOffset(220, 18)
-	title.Position               = UDim2.fromOffset(68, 12)
-	title.BackgroundTransparency = 1
-	title.Text                   = "loading."
-	title.Font                   = Enum.Font.Code
-	title.TextSize               = 15
-	title.TextColor3             = C_TEXT
-	title.TextXAlignment         = Enum.TextXAlignment.Left
-	title.ZIndex                 = 3
-
-	-- подпись этапа
-	local subtitle = Instance.new("TextLabel", card)
-	subtitle.Size                   = UDim2.fromOffset(220, 15)
-	subtitle.Position               = UDim2.fromOffset(70, 32)
-	subtitle.BackgroundTransparency = 1
-	subtitle.Text                   = "Initializing"
-	subtitle.Font                   = Enum.Font.Code
-	subtitle.TextSize               = 12
-	subtitle.TextColor3             = C_INACTIVE
-	subtitle.TextXAlignment         = Enum.TextXAlignment.Left
-	subtitle.ZIndex                 = 3
-
-	-- фон бара
-	local barBg = Instance.new("Frame", card)
-	barBg.Size             = UDim2.fromOffset(298, 4)
-	barBg.Position         = UDim2.fromOffset(11, 64)
-	barBg.BackgroundColor3 = C_ELEM
-	barBg.BorderSizePixel  = 0
-	barBg.ZIndex           = 3
-	Instance.new("UICorner", barBg).CornerRadius = UDim.new(0, 2)
-
-	-- заливка бара
-	local barFill = Instance.new("Frame", barBg)
-	barFill.Size             = UDim2.fromOffset(0, 4)
-	barFill.BackgroundColor3 = C_ACCENT
-	barFill.BorderSizePixel  = 0
-	barFill.ZIndex           = 4
-	Instance.new("UICorner", barFill).CornerRadius = UDim.new(0, 2)
-
-	local BAR_W = 298
-	local function setProgress(pct, label)
-		subtitle.Text = label
+	local function setProgress(pct, name)
+		lblStage.Text = name
 		TweenSvc:Create(barFill,
-			TweenInfo.new(0.28, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
-			{Size = UDim2.fromOffset(math.floor(BAR_W * pct), 4)}
+			TweenInfo.new(0.35, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
+			{Size = UDim2.fromOffset(math.floor(BAR_W * pct), 3)}
 		):Play()
 	end
 
-	local dotConn
-	local dotN = 0
-	dotConn = RS.Heartbeat:Connect(function()
-		dotN = (dotN + 1) % 4
-		title.Text = "loading" .. string.rep(".", dotN == 0 and 1 or dotN)
-	end)
-
 	local stages = {
-		{0.10, "Initializing",        0.25},
-		{0.28, "Loading modules",     0.35},
-		{0.48, "64 modules ready",    0.30},
-		{0.66, "Disabling Anticheat", 0.30},
-		{0.82, "Patching memory",     0.25},
-		{0.94, "Applying hooks",      0.20},
-		{1.00, "Complete! :3",        0.15},
+		{0.10, "Initializing",        0.20},
+		{0.25, "Loading modules",     0.26},
+		{0.44, "Modules ready",       0.20},
+		{0.60, "Disabling Anticheat", 0.24},
+		{0.76, "Patching memory",     0.18},
+		{0.90, "Applying hooks",      0.14},
+		{1.00, "Complete!",           0.08},
 	}
 
 	task.spawn(function()
-		for _, stage in ipairs(stages) do
-			setProgress(stage[1], stage[2])
-			task.wait(stage[3])
+		if not readyOk then
+			dotConn:Disconnect()
+			lblTitle.Text = "error"
+			lblTitle.TextColor3 = C_ERR
+			lblStage.Text = readyMsg
+			task.wait(3.5)
+			sg:Destroy(); return
 		end
 
-		local elapsed = string.format("%.2f", tick() - startTime)
+		for _, s in ipairs(stages) do
+			setProgress(s[1], s[2])
+			task.wait(s[3])
+		end
+
 		dotConn:Disconnect()
-		title.Text    = "loaded in " .. elapsed .. "s"
-		subtitle.Text = "Complete! :3"
-		subtitle.TextColor3 = C_TEXT
+		lblTitle.Text = "loaded in " .. string.format("%.2f", tick()-startTime) .. "s"
+		lblStage.Text = "Complete!"
+		lblStage.TextColor3 = C_OK
+		task.wait(0.75)
 
-		task.wait(0.9)
-
-		local info = TweenInfo.new(0.4, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
-		TweenSvc:Create(card, info, {Position = UDim2.new(0.5, 0, 0.5, 40)}):Play()
-		for _, desc in card:GetDescendants() do
-			pcall(function()
-				if desc:IsA("TextLabel") then
-					TweenSvc:Create(desc, info, {TextTransparency = 1}):Play()
-				elseif desc:IsA("Frame") then
-					TweenSvc:Create(desc, info, {BackgroundTransparency = 1}):Play()
-				end
-			end)
+		local eOut = TweenInfo.new(0.35, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+		for _, el in {lblTitle, lblStage} do
+			TweenSvc:Create(el, eOut, {TextTransparency=1}):Play()
 		end
-		TweenSvc:Create(card, info, {BackgroundTransparency = 1}):Play()
-		task.wait(0.45)
+		TweenSvc:Create(imgLabel, eOut, {ImageTransparency=1}):Play()
+		TweenSvc:Create(barBg,   eOut, {BackgroundTransparency=1}):Play()
+		TweenSvc:Create(barFill, eOut, {BackgroundTransparency=1}):Play()
+		TweenSvc:Create(card,    eOut, {BackgroundTransparency=1}):Play()
+		TweenSvc:Create(stroke,  eOut, {Transparency=1}):Play()
+		task.wait(0.4)
 		sg:Destroy()
 	end)
 end
-
 -- ---- Fonts & Images loader ----
 local Fonts, Images = LPH_JIT(function()
 	local RunService = game:GetService("RunService")
 	local HttpService = game:GetService("HttpService")
 
 	local Fonts = {
-		URL = "https://raw.githubusercontent.com/SWIMHUBISWIMMING/librehub/refs/heads/main/assets/",
+		URL = "https://raw.githubusercontent.com/sh1shochek/frost.vip/main/assets/",
 
 		Names = {
 			"Tahoma",
@@ -307,7 +350,7 @@ local Fonts, Images = LPH_JIT(function()
 	end
 
 	local Images = {
-		URL = "https://raw.githubusercontent.com/SWIMHUBISWIMMING/librehub/refs/heads/main/assets/",
+		URL = "https://raw.githubusercontent.com/sh1shochek/frost.vip/main/assets/",
 
 		Names = {
 			"combat",
@@ -600,7 +643,7 @@ local Library = {
 
         Library.Font = CustomFont:New("TahomaXP", 400, "Regular", {
             Id = "TahomaXP",
-            Url = "https://github.com/sametexe001/luas/raw/refs/heads/main/fonts/windows-xp-tahoma.ttf"
+            Url = "https://raw.githubusercontent.com/sh1shochek/frost.vip/main/assets/windows-xp-tahoma.ttf"
         })
     end
 
@@ -8087,6 +8130,25 @@ local function run_autodetect(duration)
 	end)
 end
 
+-- ============================================================
+--  HITMARKER shared state (3D floating, видно из всех блоков)
+-- ============================================================
+local hm_enabled    = false
+local hm_color      = Color3.new(1, 1, 1)
+local hm_kill_color = Color3.fromRGB(220, 80, 80)
+local hm_size       = 12
+local hm_thick      = 2
+local hm_duration   = 3.0   -- секунд живёт каждый хитмаркер
+-- Очередь активных хитмаркеров: {world_pos, damage, is_kill, born, offset_y}
+local hm_queue      = {}
+-- Устаревшие поля (для совместимости, не используются в новой системе)
+local hm_active     = false
+local hm_timer      = 0
+local hm_is_kill    = false
+local hm_cur_color  = Color3.new(1, 1, 1)
+local hm_world_pos  = nil
+local hm_screen_pos = nil
+
 do
 	local aimsec = ui.sections.aimbot_main
 	local chksec = ui.sections.aimbot_main  -- "Checks" merged into Aimbot section
@@ -8099,19 +8161,9 @@ do
 	local aimbot_team_check, aimbot_dead_check, aimbot_dist_check, aimbot_max_distance = false, false, false, 600
 	local fov_show, fov_color, fov_outline, fov_size = false, Color3.fromRGB(200, 170, 255), false, 100
 
-	-- объявляем заранее чтобы hit_detection мог их использовать
-	local hm_enabled = false
+	-- hm_* переменные вынесены выше как shared state (видны обоим do-блокам)
+	-- ke_enabled объявлен здесь т.к. используется только внутри этого блока
 	local ke_enabled = false
-	-- состояние хитмаркера (прямо здесь, без посредников)
-	local hm_active    = false
-	local hm_timer     = 0
-	local hm_is_kill   = false
-	local hm_color     = Color3.new(1, 1, 1)
-	local hm_kill_color = Color3.fromRGB(220, 80, 80)
-	local hm_cur_color = Color3.new(1, 1, 1)
-	local hm_size      = 12
-	local hm_thick     = 2
-	local hm_duration  = 0.45
 	local hm_alpha     = 0
 	-- состояние kill effect (теперь не используется, оставлено для совместимости)
 	local ke_spawn_pos  = nil
@@ -8447,61 +8499,52 @@ do
 		hitLogsHolder.Name = "Holder"
 		hitLogsHolder.BackgroundTransparency = 1
 		hitLogsHolder.BorderSizePixel = 0
-		hitLogsHolder.Size = UDim2.fromOffset(900, 260)
+		-- AutomaticSize X: ширина = самая длинная строка, блок по центру экрана
+		hitLogsHolder.AutomaticSize = Enum.AutomaticSize.XY
+		hitLogsHolder.Size = UDim2.fromOffset(0, 0)
 		hitLogsHolder.Position = UDim2.new(0.5, 0, 0.62, 0)
 		hitLogsHolder.AnchorPoint = Vector2.new(0.5, 0)
 
 		local hitLogsLayout = Instance.new("UIListLayout", hitLogsHolder)
 		hitLogsLayout.FillDirection = Enum.FillDirection.Vertical
-		hitLogsLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+		-- Left: все строки выровнены по одному левому краю блока
+		hitLogsLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
 		hitLogsLayout.VerticalAlignment = Enum.VerticalAlignment.Top
 		hitLogsLayout.SortOrder = Enum.SortOrder.LayoutOrder
-		hitLogsLayout.Padding = UDim.new(0, 3)
+		hitLogsLayout.Padding = UDim.new(0, 0)
 
 		local activeHitLogs = {}
 		local hitlog_order = 0
-		local HITLOG_ROW_HEIGHT = 22
+		local HITLOG_ROW_HEIGHT = 18
 
 		local function update_hitlogs_position()
+			-- AutomaticSize: холдер растягивается по контенту, позиционируем по центру
 			if hit_logs_position == "Center" then
 				hitLogsHolder.AnchorPoint = Vector2.new(0.5, 0)
 				hitLogsHolder.Position = UDim2.new(0.5, 0, 0.62, 0)
-				hitLogsHolder.Size = UDim2.fromOffset(900, 260)
-				hitLogsLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
 			elseif hit_logs_position == "Left" then
 				hitLogsHolder.AnchorPoint = Vector2.new(0, 0.5)
 				hitLogsHolder.Position = UDim2.new(0, 18, 0.5, 0)
-				hitLogsHolder.Size = UDim2.fromOffset(620, 260)
-				hitLogsLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
 			elseif hit_logs_position == "Top" then
 				hitLogsHolder.AnchorPoint = Vector2.new(0.5, 0)
 				hitLogsHolder.Position = UDim2.new(0.5, 0, 0, 78)
-				hitLogsHolder.Size = UDim2.fromOffset(900, 260)
-				hitLogsLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
 			else -- Top left
 				hitLogsHolder.AnchorPoint = Vector2.new(0, 0)
 				hitLogsHolder.Position = UDim2.new(0, 18, 0, 78)
-				hitLogsHolder.Size = UDim2.fromOffset(520, 260)
-				hitLogsLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
 			end
 
-			for _, label in activeHitLogs do
-				if label and label.Parent then
-					label.TextXAlignment = (hit_logs_position == "Left" or hit_logs_position == "Top left") and Enum.TextXAlignment.Left or Enum.TextXAlignment.Center
-					label.Size = UDim2.new(1, 0, 0, HITLOG_ROW_HEIGHT)
-				end
-			end
+			-- AutomaticSize управляет шириной, ничего не меняем
 		end
 
 		local function show_hitlog(text, duration)
 			duration = math.max(0.1, tonumber(duration) or 5)
 
-			-- Top left uses the menu's built-in notification system.
-			-- Left is a separate center-left position, so it is visually different.
 			if hit_logs_position == "Top left" then
 				Library.Notification(text, duration, hit_logs_color)
 				return
 			end
+
+			local hitlogFont = Fonts and Fonts.Get and Fonts.Get("TahomaXP") or nil
 
 			local label = Instance.new("TextLabel")
 			hitlog_order += 1
@@ -8510,8 +8553,9 @@ do
 			label.Parent = hitLogsHolder
 			label.BackgroundTransparency = 1
 			label.BorderSizePixel = 0
-			label.Size = UDim2.new(1, 0, 0, HITLOG_ROW_HEIGHT)
-			local hitlogFont = Fonts and Fonts.Get and Fonts.Get("TahomaXP") or nil
+			-- AutomaticSize X: лейбл растягивается по тексту, все строки Left-aligned
+			label.AutomaticSize = Enum.AutomaticSize.X
+			label.Size = UDim2.fromOffset(0, HITLOG_ROW_HEIGHT)
 			if hitlogFont then
 				label.FontFace = hitlogFont
 			else
@@ -8524,22 +8568,26 @@ do
 			label.TextTransparency = 1
 			label.RichText = true
 			label.Text = text
-			label.TextXAlignment = (hit_logs_position == "Left" or hit_logs_position == "Top left") and Enum.TextXAlignment.Left or Enum.TextXAlignment.Center
+			-- Left: [frost.vip] всегда на одной вертикальной линии слева
+			label.TextXAlignment = Enum.TextXAlignment.Left
 			label.TextYAlignment = Enum.TextYAlignment.Center
 			label.ZIndex = 10
 
 			table.insert(activeHitLogs, label)
 			update_hitlogs_position()
-			label.Size = UDim2.new(1, 0, 0, 0)
+			label.Size = UDim2.fromOffset(0, 0)
 
-			HitLogTweenService:Create(label, TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+			HitLogTweenService:Create(label, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
 				TextTransparency = 0,
 				TextStrokeTransparency = 0.35,
-				Size = UDim2.new(1, 0, 0, HITLOG_ROW_HEIGHT)
+				Size = UDim2.fromOffset(0, HITLOG_ROW_HEIGHT)
 			}):Play()
+
 			task.delay(duration, function()
 				if not label or not label.Parent then return end
-				local tween = HitLogTweenService:Create(label, TweenInfo.new(0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {TextTransparency = 1, TextStrokeTransparency = 1})
+				local tween = HitLogTweenService:Create(label, TweenInfo.new(0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+					TextTransparency = 1, TextStrokeTransparency = 1
+				})
 				tween:Play()
 				tween.Completed:Wait()
 				for i, v in activeHitLogs do
@@ -8565,21 +8613,16 @@ do
 
 		local function build_hitlog_text(player_name, part_name, damage, health)
 			local r, g, b = color_to_rgb(hit_logs_color)
-			local white_open = '<font color="rgb(255, 255, 255)">'
-			local white_close = '</font>'
-			local accent = string.format('<font color="rgb(%s, %s, %s)">frost.vip</font>', r, g, b)
-
+			local accent_open  = string.format('<font color="rgb(%s, %s, %s)">', r, g, b)
+			local accent_close = '</font>'
 			return string.format(
-				'%s[%s%s%s] Hit %s in the %s for %s damage (%s health remaining)%s',
-				white_open,
-				white_close,
-				accent,
-				white_open,
+				'[ %sfrost.vip%s ] Hit %s in the %s for %s damage (%s health remaining)',
+				accent_open,
+				accent_close,
 				rich_escape(player_name),
 				rich_escape(part_name),
 				rich_escape(damage),
-				rich_escape(health),
-				white_close
+				rich_escape(health)
 			)
 		end
 
@@ -8604,6 +8647,24 @@ do
 		hit_detection = function(player, new_health, old_health)
 			if new_health >= old_health then
 				return
+			end
+
+			-- ---- 3D Hitmarker: срабатывает при ЛЮБОМ уроне по любому игроку ----
+			if hm_enabled and player ~= LocalPlayer then
+				local char = player.Character
+				if char then
+					local root = char:FindFirstChild("Head")
+						or char:FindFirstChild("HumanoidRootPart")
+						or char:FindFirstChild("UpperTorso")
+					if root and root.Parent then
+						-- Фиксируем позицию В МОМЕНТ ПОПАДАНИЯ (не двигается)
+						local hit_pos = root.Position
+						table.insert(hm_queue, {
+							pos  = hit_pos,   -- замороженная позиция хита
+							born = tick(),
+						})
+					end
+				end
 			end
 
 			-- Для hitlogs: проверяем что это наша цель (текущая или последняя)
@@ -9202,68 +9263,99 @@ do
 	end})
 
 	-- ---- HITMARKERS ----
-	-- (hm_enabled, hm_color и др. уже объявлены выше как upvalue)
+	-- ============================================================
+	--  3D HITMARKER — плавающие цифры урона в мире
+	-- ============================================================
 
-	-- 4 линии хитмаркера
-	local hmLines = {}
-	local hmZero  = Vector2.new(0,0)
-	local hm_world_pos = nil  -- позиция хита в мире
-	local hm_screen_pos = nil -- кэшированная экранная позиция
-	for i = 1, 4 do
-		hmLines[i] = cheat.utility.new_drawing("Line", {
+	-- Пул Line-объектов: по 4 линии на каждый крестик, макс 6 одновременных крестиков
+	local HM_MAX_CROSSES = 6
+	local HM_POOL_SIZE   = HM_MAX_CROSSES * 4  -- 24 линии
+	local hm_pool = {}
+	for i = 1, HM_POOL_SIZE do
+		hm_pool[i] = cheat.utility.new_drawing("Line", {
 			Visible   = false,
-			Color     = hm_color,
-			Thickness = hm_thick,
-			ZIndex    = 10,
-			From      = hmZero,
-			To        = hmZero,
+			Color     = Color3.new(1, 1, 1),
+			Thickness = 2,
+			ZIndex    = 15,
+			From      = Vector2.new(0, 0),
+			To        = Vector2.new(0, 0),
 		})
 	end
 
 	cheat.utility.new_renderstepped(LPH_NO_VIRTUALIZE(function(delta)
-		if not hm_enabled or not hm_active then
-			for i = 1, 4 do hmLines[i].Visible = false end
+		if not hm_enabled then
+			-- скрываем все линии
+			for i = 1, HM_POOL_SIZE do hm_pool[i].Visible = false end
 			return
 		end
 
-		hm_timer = hm_timer + delta
-		local t   = math.min(hm_timer / hm_duration, 1)
-		local fade = t
+		local now = tick()
 
-		-- Определяем позицию крестика
-		local center
-		if hm_world_pos then
-			-- Рисуем на позиции врага в мире
-			local pos3d, onScreen = _WorldToViewportPoint(Camera, hm_world_pos)
-			if onScreen then
-				center = Vector2.new(pos3d.X, pos3d.Y)
-				hm_screen_pos = center
-			else
-				center = hm_screen_pos or (Camera.ViewportSize / 2)
+		-- Фильтруем живые хиты
+		local alive = {}
+		for _, entry in ipairs(hm_queue) do
+			if now - entry.born < hm_duration then
+				table.insert(alive, entry)
 			end
-		else
-			center = hm_screen_pos or (Camera.ViewportSize / 2)
 		end
+		hm_queue = alive
 
-		local gap    = 3 + hm_size * 0.3 * t
-		local sz     = hm_size * (1 - t * 0.3)
+		-- Скрываем все линии пула, потом рисуем нужные
+		for i = 1, HM_POOL_SIZE do hm_pool[i].Visible = false end
 
-		local dirs = {
-			Vector2.new( 1,  1), Vector2.new(-1,  1),
-			Vector2.new(-1, -1), Vector2.new( 1, -1),
+		-- Каждый хит — отдельный крестик × в замороженной точке попадания
+		local sq2 = 0.7071  -- 1/sqrt(2)
+		local dirs45 = {
+			Vector2.new( sq2,  sq2),
+			Vector2.new(-sq2,  sq2),
+			Vector2.new(-sq2, -sq2),
+			Vector2.new( sq2, -sq2),
 		}
-		for i, d in ipairs(dirs) do
-			hmLines[i].From         = center + d * gap
-			hmLines[i].To           = center + d * (gap + sz)
-			hmLines[i].Color        = hm_cur_color or Color3.new(1, 1, 1)
-			hmLines[i].Thickness    = hm_thick
-			hmLines[i].Transparency = fade * 0.95
-			hmLines[i].Visible      = true
-		end
 
-		if t >= 1 then
-			hm_active = false
-			hm_world_pos = nil
+		local drawn = 0  -- сколько крестиков нарисовано (макс = HM_POOL_SIZE / 4)
+
+		for _, entry in ipairs(hm_queue) do
+			if drawn * 4 + 4 > HM_POOL_SIZE then break end
+
+			local age = now - entry.born
+			local t   = age / hm_duration   -- 0..1
+			-- Анимация: быстрое появление (0..15%) -> видно (15..80%) -> fade out (80..100%)
+			local tr
+			if t < 0.15 then
+				-- появление: быстро от прозрачного к видимому
+				tr = 1 - (t / 0.15)
+			elseif t < 0.80 then
+				-- полностью видно
+				tr = 0
+			else
+				-- исчезновение: плавно от видимого к прозрачному
+				tr = (t - 0.80) / 0.20
+			end
+
+			-- Проецируем ЗАМОРОЖЕННУЮ позицию хита на экран
+			local pos3d, onScreen = Camera:WorldToViewportPoint(entry.pos)
+			if not onScreen then continue end
+
+			local cx = pos3d.X
+			local cy = pos3d.Y
+
+			-- Размер крестика зависит от расстояния
+			local dist = math.max(pos3d.Z, 1)
+			local csz  = math.clamp(hm_size * 30 / dist, 5, 22)
+			local cgap = math.clamp(hm_size * 6 / dist, 2, 8)
+
+			-- Рисуем 4 луча крестика ×
+			for i, dir in ipairs(dirs45) do
+				local li = drawn * 4 + i
+				hm_pool[li].From         = Vector2.new(cx, cy) + dir * cgap
+				hm_pool[li].To           = Vector2.new(cx, cy) + dir * (cgap + csz)
+				hm_pool[li].Color        = hm_color
+				hm_pool[li].Thickness    = hm_thick
+				hm_pool[li].Transparency = tr
+				hm_pool[li].Visible      = true
+			end
+
+			drawn = drawn + 1
 		end
 	end))
 
@@ -9392,7 +9484,7 @@ do
 		sec:Slider({Name = "Hitmarker thickness", Min = 1, Max = 8, Float = 1, Value = 2, Flag = "hm_thick", Callback = function(v)
 			hm_thick = v
 		end})
-		sec:Slider({Name = "Hitmarker fade time (ms)", Min = 50, Max = 800, Float = 10, Value = 180, Flag = "hm_duration", Callback = function(v)
+		sec:Slider({Name = "Hitmarker duration (ms)", Min = 200, Max = 8000, Float = 100, Value = 3000, Flag = "hm_duration", Callback = function(v)
 			hm_duration = v / 1000
 		end})
 
@@ -9599,31 +9691,30 @@ do
 				if (isLocal and DE_CONFIG.AFFECT_SELF) or (not isLocal and DE_CONFIG.AFFECT_OTHERS) then
 					de_createEffect(pos)
 				end
-				-- Kill effect теперь срабатывает через hit_detection (надежнее)
-				-- Hitmarker — крестик при любом килле врага
+				-- Kill particles при убийстве любого врага (универсально, работает в любом режиме)
+				if not isLocal and ke_enabled then
+					ke_createEffect(pos)
+				end
+				-- Hitmarker при убийстве через Died — замороженная позиция
 				if not isLocal and hm_enabled then
-					hm_active = true
-					hm_timer = 0
-					hm_is_kill = true
-					hm_cur_color = hm_kill_color or Color3.fromRGB(220, 80, 80)
-					hm_world_pos = pos
+					table.insert(hm_queue, {
+						pos  = pos,
+						born = tick(),
+					})
 				end
 			end
 		end)
-		-- Hitmarker при хите (не килле) — через HealthChanged
+		-- Kill particles fallback через HealthChanged (для игр где Died не реплицируется)
 		if not isLocal and humanoid then
 			local prevHealth = humanoid.Health
 			humanoid.HealthChanged:Connect(function(newHealth)
-				if newHealth < prevHealth and newHealth > 0 then
-					if hm_enabled then
-						hm_active = true
-						hm_timer = 0
-						hm_is_kill = false
-						hm_cur_color = hm_color or Color3.new(1, 1, 1)
-						local head = character:FindFirstChild("Head") or character:FindFirstChild("HumanoidRootPart")
-						if head and head.Parent then
-							hm_world_pos = head.Position
-						end
+				if newHealth <= 0 and prevHealth > 0 and ke_enabled then
+					local root = character:FindFirstChild("HumanoidRootPart")
+						or character:FindFirstChild("UpperTorso")
+						or character:FindFirstChild("Torso")
+						or character:FindFirstChild("Head")
+					if root and root.Parent then
+						ke_createEffect(root.Position + Vector3.new(0, 1.5, 0))
 					end
 				end
 				prevHealth = newHealth
