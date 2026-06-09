@@ -121,7 +121,7 @@ do
 	-- иконка
 	local iconPath = "moneyblox\\icon.png"
 	downloadFile(
-		"https://raw.githubusercontent.com/sh1shochek/frost.vip/main/assets/icon.png",
+		"https://raw.githubusercontent.com/sh1shochek/frostvip/main/assets/icon.png",
 		iconPath
 	)
 	if isfile(iconPath) then
@@ -133,7 +133,7 @@ do
 	local TTF  = FontsFolder .. "TahomaXP.ttf"
 	local JSON = FontsFolder .. "TahomaXP.json"
 	downloadFile(
-		"https://raw.githubusercontent.com/sh1shochek/frost.vip/main/assets/windows-xp-tahoma.ttf",
+		"https://raw.githubusercontent.com/sh1shochek/frostvip/main/assets/windows-xp-tahoma.ttf",
 		TTF
 	)
 	if isfile(TTF) then
@@ -292,7 +292,7 @@ local Fonts, Images = LPH_JIT(function()
 	local HttpService = game:GetService("HttpService")
 
 	local Fonts = {
-		URL = "https://raw.githubusercontent.com/sh1shochek/frost.vip/main/assets/",
+		URL = "https://raw.githubusercontent.com/sh1shochek/frostvip/main/assets/",
 
 		Names = {
 			"Tahoma",
@@ -350,7 +350,7 @@ local Fonts, Images = LPH_JIT(function()
 	end
 
 	local Images = {
-		URL = "https://raw.githubusercontent.com/sh1shochek/frost.vip/main/assets/",
+		URL = "https://raw.githubusercontent.com/sh1shochek/frostvip/main/assets/",
 
 		Names = {
 			"combat",
@@ -643,7 +643,7 @@ local Library = {
 
         Library.Font = CustomFont:New("TahomaXP", 400, "Regular", {
             Id = "TahomaXP",
-            Url = "https://raw.githubusercontent.com/sh1shochek/frost.vip/main/assets/windows-xp-tahoma.ttf"
+            Url = "https://raw.githubusercontent.com/sh1shochek/frostvip/main/assets/windows-xp-tahoma.ttf"
         })
     end
 
