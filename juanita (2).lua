@@ -5985,7 +5985,8 @@ function Library:Window(cfg)
 		if WM and type(WM) == "table" then
 			local ok = pcall(function()
 				local StatsService = game:GetService("Stats")
-				local uid = tostring(game:GetService("Players").LocalPlayer.UserId)
+				local env = (getgenv and getgenv()) or _G
+				local uid = tostring(rawget(env, "FROST_LICENSE_UID") or rawget(env, "SWG_LicenseUID") or game:GetService("Players").LocalPlayer.UserId)
 
 				local frames, lastTick, fps = 0, os.clock(), 0
 				game:GetService("RunService").RenderStepped:Connect(function()
@@ -6011,7 +6012,7 @@ function Library:Window(cfg)
 
 					if WM.SetText then
 						WM:SetText(string.format(
-							"frost.vip - developer - v1.0 - %d fps - %dms - uid: %s - %s",
+							"frost.vip - developer - v1.0 - %d fps - %dms - license uid: %s - %s",
 							fps, ping, uid, os.date("%H:%M:%S")
 						))
 					end
@@ -9014,7 +9015,7 @@ do
 		tiCard.Position = UDim2.fromOffset(ti_x, ti_y)
 	end
 
-	Instance.new("UICorner", tiCard).CornerRadius = UDim.new(0, 4)
+	Instance.new("UICorner", tiCard).CornerRadius = UDim.new(0, 1)
 	local s1 = Instance.new("UIStroke", tiCard)
 	s1.Color = Color3.fromRGB(51,51,51); s1.Thickness = 1
 	s1.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
@@ -9026,7 +9027,7 @@ do
 	tiAccent.BorderSizePixel  = 0
 	tiAccent.Active           = false
 	tiAccent.ZIndex           = 10
-	Instance.new("UICorner", tiAccent).CornerRadius = UDim.new(0,4)
+	Instance.new("UICorner", tiAccent).CornerRadius = UDim.new(0,1)
 
 	-- glow для accent-линии Target Info — тот же паттерн, что у watermark/keybinds Liner Glow
 	local tiAccentGlow = Instance.new("ImageLabel", tiAccent)
@@ -9053,7 +9054,7 @@ do
 	tiAva.BorderSizePixel  = 0
 	tiAva.Image            = ""
 	tiAva.Active           = false
-	Instance.new("UICorner", tiAva).CornerRadius = UDim.new(0,3)
+	Instance.new("UICorner", tiAva).CornerRadius = UDim.new(0,1)
 
 	-- разделитель
 	local tiDiv = Instance.new("Frame", tiCard)
@@ -9095,13 +9096,13 @@ do
 	tiBarBg.Position         = UDim2.fromOffset(TI_BAR_X, H-16)
 	tiBarBg.BackgroundColor3 = Color3.fromRGB(39,39,39)
 	tiBarBg.BorderSizePixel  = 0; tiBarBg.Active = false
-	Instance.new("UICorner", tiBarBg).CornerRadius = UDim.new(0,2)
+	Instance.new("UICorner", tiBarBg).CornerRadius = UDim.new(0,1)
 
 	local tiBarFill = Instance.new("Frame", tiBarBg)
 	tiBarFill.Size             = UDim2.fromOffset(0,10)
 	tiBarFill.BackgroundColor3 = Color3.fromRGB(0,210,60)
 	tiBarFill.BorderSizePixel  = 0; tiBarFill.Active = false
-	Instance.new("UICorner", tiBarFill).CornerRadius = UDim.new(0,2)
+	Instance.new("UICorner", tiBarFill).CornerRadius = UDim.new(0,1)
 
 	local tiBarTxt = Instance.new("TextLabel", tiBarBg)
 	tiBarTxt.Size = UDim2.fromScale(1,1); tiBarTxt.BackgroundTransparency = 1
