@@ -81,7 +81,7 @@ makefolder(ConfigFolder)
 local ThemeFolder = string.format( "%s\\%s\\", Folder, "Themes" )
 makefolder(ThemeFolder)
 
--- ---- Loading screen ----
+-- ---- Loading screen (Исправлено: добавлено создание папки Fonts) ----
 do
 	local Players  = game:GetService("Players")
 	local CoreGui  = cloneref and cloneref(game:GetService("CoreGui")) or game:GetService("CoreGui")
@@ -90,6 +90,7 @@ do
 	local RS       = game:GetService("RunService")
 	local startTime = tick()
 
+	-- Цвета (Дефолтные серые, как в скрипте)
 	local C_BG     = Color3.fromRGB(13, 13, 13)
 	local C_BORDER = Color3.fromRGB(176, 176, 209)
 	local C_ACCENT = Color3.fromRGB(176, 176, 209)
@@ -107,6 +108,9 @@ do
 	-- ── СНАЧАЛА ГРУЗИМ ВСЁ, ПОТОМ ПОКАЗЫВАЕМ ──
 	local loaderFont = nil
 	local iconAsset  = ""
+
+	-- ИСПРАВЛЕНИЕ: Создаем папку для шрифтов, если её нет (чтобы не было ошибки nil)
+	if isfolder and not isfolder(FontsFolder) then makefolder(FontsFolder) end
 
 	local function downloadFile(url, path)
 		if isfile(path) then return true end
@@ -156,8 +160,8 @@ do
 	pcall(function() sg.Parent = CoreGui end)
 	if not sg.Parent then sg.Parent = Players.LocalPlayer:WaitForChild("PlayerGui") end
 
-	local W, H   = 280, 76
-	local ICON_S = 46
+	local W, H   = 220, 50
+	local ICON_S = 36
 	local PAD    = 10
 	local TEXT_X = PAD + ICON_S + 10
 
@@ -168,16 +172,19 @@ do
 	card.Position = UDim2.new(0.5, 0, 0.5, 0)
 	card.BackgroundColor3 = C_BG
 	card.BorderSizePixel = 0
+	card.BackgroundTransparency = 1
 	card.ZIndex = 2
 
 	local stroke = Instance.new("UIStroke", card)
 	stroke.Color = C_BORDER
-	stroke.Thickness = 1
+	stroke.Thickness = 2
 	stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	stroke.Transparency = 1
 
 	-- иконка слева
 	local imgLabel = Instance.new("ImageLabel", card)
 	imgLabel.Size = UDim2.fromOffset(ICON_S, ICON_S)
+	imgLabel.ImageTransparency = 1
 	imgLabel.Position = UDim2.fromOffset(PAD, math.floor((H - ICON_S) / 2))
 	imgLabel.BackgroundTransparency = 1
 	imgLabel.Image = iconAsset
@@ -187,10 +194,11 @@ do
 	-- loading...
 	local lblTitle = Instance.new("TextLabel", card)
 	lblTitle.Size = UDim2.fromOffset(W - TEXT_X - 8, 22)
-	lblTitle.Position = UDim2.fromOffset(TEXT_X, 12)
+	lblTitle.Position = UDim2.fromOffset(TEXT_X, 9)
 	lblTitle.BackgroundTransparency = 1
 	lblTitle.Text = "loading..."
-	lblTitle.TextSize = 15
+	lblTitle.TextSize = 12
+	lblTitle.TextTransparency = 1
 	lblTitle.TextColor3 = C_TEXT
 	lblTitle.TextXAlignment = Enum.TextXAlignment.Left
 	lblTitle.ZIndex = 3
@@ -200,10 +208,11 @@ do
 	-- стадия
 	local lblStage = Instance.new("TextLabel", card)
 	lblStage.Size = UDim2.fromOffset(W - TEXT_X - 8, 16)
-	lblStage.Position = UDim2.fromOffset(TEXT_X, 32)
+	lblStage.Position = UDim2.fromOffset(TEXT_X, 22)
 	lblStage.BackgroundTransparency = 1
 	lblStage.Text = "Initializing"
-	lblStage.TextSize = 12
+	lblStage.TextSize = 10
+	lblStage.TextTransparency = 1
 	lblStage.TextColor3 = C_MUTED
 	lblStage.TextXAlignment = Enum.TextXAlignment.Left
 	lblStage.ZIndex = 3
@@ -214,9 +223,10 @@ do
 	local BAR_W = W - TEXT_X - 8
 	local barBg = Instance.new("Frame", card)
 	barBg.Size = UDim2.fromOffset(BAR_W, 3)
-	barBg.Position = UDim2.fromOffset(TEXT_X, H - 11)
+	barBg.Position = UDim2.fromOffset(TEXT_X, H - 8)
 	barBg.BackgroundColor3 = Color3.fromRGB(35, 35, 40)
 	barBg.BorderSizePixel = 0
+	barBg.BackgroundTransparency = 1
 	barBg.ZIndex = 3
 
 	local barFill = Instance.new("Frame", barBg)
@@ -224,6 +234,7 @@ do
 	barFill.BackgroundColor3 = C_ACCENT
 	barFill.BorderSizePixel = 0
 	barFill.ZIndex = 4
+	barFill.BackgroundTransparency = 1
 
 	-- анимация точек
 	local dotN = 0
@@ -234,10 +245,30 @@ do
 		end
 	end)
 
+	-- плавное появление лоадера
+	local eIn = TweenInfo.new(0.5, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
+	task.spawn(function()
+		task.wait(0.05)
+		TweenSvc:Create(card, eIn, {
+			BackgroundTransparency = 0,
+			Size = UDim2.fromOffset(W, H)
+		}):Play()
+		TweenSvc:Create(stroke, eIn, {Transparency = 0}):Play()
+		task.wait(0.15)
+		TweenSvc:Create(barBg, eIn, {BackgroundTransparency = 0}):Play()
+		task.wait(0.08)
+		TweenSvc:Create(imgLabel, eIn, {ImageTransparency = 0}):Play()
+		TweenSvc:Create(lblTitle, eIn, {TextTransparency = 0}):Play()
+		task.wait(0.12)
+		TweenSvc:Create(lblStage, eIn, {TextTransparency = 0}):Play()
+		task.wait(0.1)
+		TweenSvc:Create(barFill, eIn, {BackgroundTransparency = 0, Size = UDim2.fromOffset(3, 3)}):Play()
+	end)
+
 	local function setProgress(pct, name)
 		lblStage.Text = name
 		TweenSvc:Create(barFill,
-			TweenInfo.new(0.35, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
+			TweenInfo.new(0.5, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut),
 			{Size = UDim2.fromOffset(math.floor(BAR_W * pct), 3)}
 		):Play()
 	end
@@ -273,7 +304,7 @@ do
 		lblStage.TextColor3 = C_OK
 		task.wait(0.75)
 
-		local eOut = TweenInfo.new(0.35, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+		local eOut = TweenInfo.new(0.5, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
 		for _, el in {lblTitle, lblStage} do
 			TweenSvc:Create(el, eOut, {TextTransparency=1}):Play()
 		end
@@ -282,10 +313,11 @@ do
 		TweenSvc:Create(barFill, eOut, {BackgroundTransparency=1}):Play()
 		TweenSvc:Create(card,    eOut, {BackgroundTransparency=1}):Play()
 		TweenSvc:Create(stroke,  eOut, {Transparency=1}):Play()
-		task.wait(0.4)
+		task.wait(0.5)
 		sg:Destroy()
 	end)
 end
+
 -- ---- Fonts & Images loader ----
 local Fonts, Images = LPH_JIT(function()
 	local RunService = game:GetService("RunService")
@@ -8944,8 +8976,8 @@ do
 	local ti_line_glow = false
 	local ti_bar_color = Library.Theme.accent  -- по дефолту цвет Accent меню, как у hitlogs
 
-	local W, H = 260, 106
-	local TI_BAR_X = 82
+	local W, H = 220, 82
+	local TI_BAR_X = 68
 	local TI_BAR_W = W - TI_BAR_X - 8
 	local ti_x = 12
 	local ti_y = Camera.ViewportSize.Y - H - 12
@@ -9015,8 +9047,8 @@ do
 
 	-- аватарка
 	local tiAva = Instance.new("ImageLabel", tiCard)
-	tiAva.Size             = UDim2.fromOffset(68, 68)
-	tiAva.Position         = UDim2.fromOffset(4, 10)
+	tiAva.Size             = UDim2.fromOffset(54, 54)
+	tiAva.Position         = UDim2.fromOffset(4, 8)
 	tiAva.BackgroundColor3 = Color3.fromRGB(19,19,19)
 	tiAva.BorderSizePixel  = 0
 	tiAva.Image            = ""
@@ -9026,7 +9058,7 @@ do
 	-- разделитель
 	local tiDiv = Instance.new("Frame", tiCard)
 	tiDiv.Size             = UDim2.fromOffset(1, H-12)
-	tiDiv.Position         = UDim2.fromOffset(76, 6)
+	tiDiv.Position         = UDim2.fromOffset(62, 6)
 	tiDiv.BackgroundColor3 = Color3.fromRGB(51,51,51)
 	tiDiv.BorderSizePixel  = 0
 	tiDiv.Active           = false
@@ -9037,7 +9069,7 @@ do
 
 	local function mkLbl(txt, yOff)
 		local l = Instance.new("TextLabel", tiCard)
-		l.Size = UDim2.fromOffset(60,14); l.Position = UDim2.fromOffset(82, yOff)
+		l.Size = UDim2.fromOffset(50,14); l.Position = UDim2.fromOffset(68, yOff)
 		l.BackgroundTransparency = 1; l.Text = txt; l.TextSize = 12
 		l.TextColor3 = Color3.fromRGB(134,134,134)
 		l.TextXAlignment = Enum.TextXAlignment.Left; l.Active = false; mkFont(l)
@@ -9045,28 +9077,28 @@ do
 	end
 	local function mkVal(txt, yOff)
 		local v = Instance.new("TextLabel", tiCard)
-		v.Size = UDim2.fromOffset(160,14); v.Position = UDim2.fromOffset(82, yOff)
+		v.Size = UDim2.fromOffset(140,14); v.Position = UDim2.fromOffset(68, yOff)
 		v.BackgroundTransparency = 1; v.Text = txt; v.TextSize = 12
 		v.TextColor3 = Color3.fromRGB(208,207,227)
 		v.TextXAlignment = Enum.TextXAlignment.Right; v.Active = false; mkFont(v)
 		return v
 	end
 
-	mkLbl("user", 10); local tiVUser = mkVal("-",    10)
-	mkLbl("hp",   26); local tiVHp   = mkVal("-",    26)
-	mkLbl("tool", 42); local tiVTool = mkVal("none", 42)
-	mkLbl("visible", 58); local tiVVis = mkVal("no", 58)
+	mkLbl("user", 8);  local tiVUser = mkVal("-",    8)
+	mkLbl("hp",   20); local tiVHp   = mkVal("-",    20)
+	mkLbl("tool", 32); local tiVTool = mkVal("none", 32)
+	mkLbl("visible", 44); local tiVVis = mkVal("no", 44)
 
 	-- hp бар
 	local tiBarBg = Instance.new("Frame", tiCard)
-	tiBarBg.Size             = UDim2.fromOffset(TI_BAR_W, 12)
-	tiBarBg.Position         = UDim2.fromOffset(TI_BAR_X, H-18)
+	tiBarBg.Size             = UDim2.fromOffset(TI_BAR_W, 10)
+	tiBarBg.Position         = UDim2.fromOffset(TI_BAR_X, H-16)
 	tiBarBg.BackgroundColor3 = Color3.fromRGB(39,39,39)
 	tiBarBg.BorderSizePixel  = 0; tiBarBg.Active = false
 	Instance.new("UICorner", tiBarBg).CornerRadius = UDim.new(0,2)
 
 	local tiBarFill = Instance.new("Frame", tiBarBg)
-	tiBarFill.Size             = UDim2.fromOffset(0,12)
+	tiBarFill.Size             = UDim2.fromOffset(0,10)
 	tiBarFill.BackgroundColor3 = Color3.fromRGB(0,210,60)
 	tiBarFill.BorderSizePixel  = 0; tiBarFill.Active = false
 	Instance.new("UICorner", tiBarFill).CornerRadius = UDim.new(0,2)
@@ -9112,7 +9144,7 @@ do
 		if math.abs(tiLastBarRatio - ratio) < 0.005 then return end
 		tiLastBarRatio = ratio
 		TargetInfoTweenService:Create(tiBarFill, tiTweenInfo, {
-			Size = UDim2.fromOffset(math.floor(TI_BAR_W * ratio), 12),
+			Size = UDim2.fromOffset(math.floor(TI_BAR_W * ratio), 10),
 			BackgroundColor3 = ti_bar_color
 		}):Play()
 	end
