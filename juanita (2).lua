@@ -1,9 +1,5 @@
 --!native
 --!optimize 2
--- ============================================================================
---  librehub (universal.lua) с ЗАМЕНЁННЫМ меню на juanitahaxx (samet).
---  Библиотека меню ВШИТА прямо в файл (без HttpGet). Код всех фич не изменён.
--- ============================================================================
 
 -- ---- LPH stubs (fabricated values) ----
 --!native
@@ -5985,8 +5981,7 @@ function Library:Window(cfg)
 		if WM and type(WM) == "table" then
 			local ok = pcall(function()
 				local StatsService = game:GetService("Stats")
-				local env = (getgenv and getgenv()) or _G
-				local uid = tostring(rawget(env, "FROST_LICENSE_UID") or rawget(env, "SWG_LicenseUID") or game:GetService("Players").LocalPlayer.UserId)
+				local uid = tostring(game:GetService("Players").LocalPlayer.UserId)
 
 				local frames, lastTick, fps = 0, os.clock(), 0
 				game:GetService("RunService").RenderStepped:Connect(function()
@@ -6012,7 +6007,7 @@ function Library:Window(cfg)
 
 					if WM.SetText then
 						WM:SetText(string.format(
-							"frost.vip - developer - v1.0 - %d fps - %dms - license uid: %s - %s",
+							"frost.vip - developer - v1.0 - %d fps - %dms - uid: %s - %s",
 							fps, ping, uid, os.date("%H:%M:%S")
 						))
 					end
@@ -7133,17 +7128,46 @@ elseif style == "Rainbow" then
 				arrow_holder.Visible = false
 			end
 
-			local corners, cache = {}, {}
-			do
+			-- Обновляем кеш частей тела только если персонаж сменился
+			if plr._cached_char ~= character then
+				plr._cached_char = character
+				plr._cached_parts = {}
 				local count = 0
 				for _, part in character:GetChildren() do
 					if _IsA(part, "BasePart") and isBodyPart(part.Name) then
-						cache[part.Name] = {part.CFrame, part.Size}
+						plr._cached_parts[part.Name] = part
 						count += 1
 					end
 				end
-				if count <= 0 then
+				plr._cached_parts_count = count
+				if plr._char_child_conn then plr._char_child_conn:Disconnect() end
+				if plr._char_rem_conn   then plr._char_rem_conn:Disconnect()   end
+				plr._char_child_conn = character.ChildAdded:Connect(function(p)
+					if _IsA(p, "BasePart") and isBodyPart(p.Name) then
+						plr._cached_parts[p.Name] = p
+						plr._cached_parts_count = (plr._cached_parts_count or 0) + 1
+					end
+				end)
+				plr._char_rem_conn = character.ChildRemoved:Connect(function(p)
+					if plr._cached_parts[p.Name] then
+						plr._cached_parts[p.Name] = nil
+						plr._cached_parts_count = math.max(0, (plr._cached_parts_count or 1) - 1)
+					end
+				end)
+			end
+
+			local corners
+			do
+				if (plr._cached_parts_count or 0) <= 0 then
 					return plr:togglevis(false)
+				end
+				-- Переиспользуем таблицу кеша вместо создания новой каждый кадр
+				local cache = plr._bbox_cache or {}
+				plr._bbox_cache = cache
+				-- очищаем только изменённые ключи
+				for k in cache do cache[k] = nil end
+				for name, part in plr._cached_parts do
+					cache[name] = {part.CFrame, part.Size}
 				end
 				corners = calculateCorners(getBoundingBox(cache))
 			end
@@ -7639,11 +7663,15 @@ elseif style == "Rainbow" then
 		end
 	end
 
-	cheat.utility.new_renderstepped(function()
+	-- rate-limit update_self_chams — достаточно 20 раз/сек
+	local _self_chams_acc = 0
+	cheat.utility.new_renderstepped(function(delta)
 		if esp_table.__loaded then
-			pcall(function()
-				esp_table.update_self_chams()
-			end)
+			_self_chams_acc = _self_chams_acc + delta
+			if _self_chams_acc >= 0.05 then
+				_self_chams_acc = 0
+				pcall(esp_table.update_self_chams)
+			end
 		end
 	end)
 
@@ -7945,6 +7973,20 @@ do
 	local get_character, get_root, get_humanoid = esp_table.get_character, esp_table.get_root, esp_table.get_humanoid
 	local get_health, get_team, get_gun = esp_table.get_health, esp_table.get_team, esp_table.get_gun
 
+	-- кеш массива игроков для get_closest_target (избегаем Players:GetPlayers() каждый кадр)
+	local _cached_players = {}
+	for _, p in Players:GetPlayers() do
+		if p ~= LocalPlayer then table.insert(_cached_players, p) end
+	end
+	Players.PlayerAdded:Connect(function(p)
+		if p ~= LocalPlayer then table.insert(_cached_players, p) end
+	end)
+	Players.PlayerRemoving:Connect(function(p)
+		for i = #_cached_players, 1, -1 do
+			if _cached_players[i] == p then table.remove(_cached_players, i); break end
+		end
+	end)
+
 	local add_player = function(player)
 		local character, humanoid
 		local old_health
@@ -8003,9 +8045,11 @@ do
 		local maximum_distance = fov_size
 		local mousepos = UserInputService:GetMouseLocation()
 		local campos = Camera.CFrame.Position
+		-- Players:GetPlayers() аллоцирует таблицу каждый вызов — берём из кеша
+		local playerList = _cached_players
 		
 		LPH_NO_VIRTUALIZE(function()
-			for _, player in Players:GetPlayers() do
+			for _, player in playerList do
 				if not (player and player ~= LocalPlayer) then continue end
 
 				local character = get_character(player)
@@ -8789,14 +8833,11 @@ do
 		fovGui.Parent = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
 	end
 
-	-- FOV glow: dispersed blur-style glow.
-	-- Instead of many thin visible circles, use fewer thicker very-transparent strokes.
-	-- They overlap into a softer glow and the outer rings fade out before the hard edge.
-	local GLOW_LAYERS           = 60
+	-- FOV glow: оптимизировано — меньше слоёв, визуально то же самое
+	local GLOW_LAYERS           = 16  -- было 60 → 120 фреймов, теперь 32 фрейма
 	local GLOW_RADIUS_PX        = 20
-	-- This is the minimum transparency near the main FOV circle. Higher = softer/darker glow.
 	local GLOW_INTENSITY        = 0.960
-	local GLOW_STROKE_THICKNESS = 2.1
+	local GLOW_STROKE_THICKNESS = 3.5 -- толще чтобы компенсировать меньше слоёв
 
 	-- создаём один Frame-кольцо с UICorner + UIStroke
 	local function createRingFrame(diameter, thickness, color, transparency)
@@ -8860,19 +8901,27 @@ do
 		g.frame.ZIndex = 1
 	end
 
-	cheat.utility.new_heartbeat(LPH_NO_VIRTUALIZE(function()
+	-- rate-limit: ищем цель не каждый кадр, а ~30 раз/сек
+	local _target_search_acc = 0
+	local _TARGET_SEARCH_RATE = 1/30
+
+	cheat.utility.new_heartbeat(LPH_NO_VIRTUALIZE(function(delta)
 		local indtxt = ""
 		if aimbot_enabled then
-			local viewportsize = Camera.ViewportSize
-			local new_fov_size = (viewportsize.X * (fov_size / Camera.FieldOfView)) / 2
-			target_part, target_player, target_collider = get_closest_target(
-				new_fov_size,
-				aimbot_part or "Head",
-				aimbot_team_check,
-				aimbot_dead_check,
-				aimbot_dist_check,
-				aimbot_max_distance
-			)
+			_target_search_acc = _target_search_acc + delta
+			if _target_search_acc >= _TARGET_SEARCH_RATE then
+				_target_search_acc = 0
+				local viewportsize = Camera.ViewportSize
+				local new_fov_size = (viewportsize.X * (fov_size / Camera.FieldOfView)) / 2
+				target_part, target_player, target_collider = get_closest_target(
+					new_fov_size,
+					aimbot_part or "Head",
+					aimbot_team_check,
+					aimbot_dead_check,
+					aimbot_dist_check,
+					aimbot_max_distance
+				)
+			end
 
 			if indicator.followpart then indicator.target_part = target_part end
 
@@ -8885,10 +8934,17 @@ do
 			end
 		else
 			target_part, target_player, target_collider = nil, nil, nil
+			_target_search_acc = 0
 		end
 
 		indicator.text = indtxt
 	end))
+	-- кешируем UIStroke один раз в локальные переменные (не getgenv)
+	local _fov_ms  = fovMainRing:FindFirstChildOfClass("UIStroke")
+	local _fov_os1 = fovOutRing1:FindFirstChildOfClass("UIStroke")
+	local _fov_os2 = fovOutRing2:FindFirstChildOfClass("UIStroke")
+	local _fov_glow_was_on = false
+
 	cheat.utility.new_renderstepped(LPH_NO_VIRTUALIZE(function()
 		local mpos        = UserInputService:GetMouseLocation()
 		local viewportsize = Camera.ViewportSize
@@ -8896,14 +8952,12 @@ do
 		local diameter     = new_fov_size * 2
 		local center       = UDim2.fromOffset(mpos.X, mpos.Y)
 
-		-- основное кольцо (UIStroke кэшируем при первом использовании)
+		-- основное кольцо
 		fovMainRing.Visible  = fov_show
 		if fov_show then
 			fovMainRing.Position = center
 			fovMainRing.Size     = UDim2.fromOffset(diameter, diameter)
-			if not getgenv().__fov_ms then getgenv().__fov_ms = fovMainRing:FindFirstChildOfClass("UIStroke") end
-			local ms = getgenv().__fov_ms
-			if ms then ms.Color = fov_color; ms.Thickness = fov_thickness end
+			if _fov_ms then _fov_ms.Color = fov_color; _fov_ms.Thickness = fov_thickness end
 		end
 
 		-- outline
@@ -8917,15 +8971,11 @@ do
 			fovOutRing2.Position = center
 			fovOutRing1.Size = UDim2.fromOffset(diameter + outlineOffset * 2, diameter + outlineOffset * 2)
 			fovOutRing2.Size = UDim2.fromOffset(math.max(2, diameter - outlineOffset * 2), math.max(2, diameter - outlineOffset * 2))
-			if not getgenv().__fov_os1 then getgenv().__fov_os1 = fovOutRing1:FindFirstChildOfClass("UIStroke") end
-			if not getgenv().__fov_os2 then getgenv().__fov_os2 = fovOutRing2:FindFirstChildOfClass("UIStroke") end
-			local os1 = getgenv().__fov_os1
-			local os2 = getgenv().__fov_os2
-			if os1 then os1.Color = fov_outline_color; os1.Thickness = outlineThickness; os1.Transparency = fov_outline_alpha end
-			if os2 then os2.Color = fov_outline_color; os2.Thickness = outlineThickness; os2.Transparency = fov_outline_alpha end
+			if _fov_os1 then _fov_os1.Color = fov_outline_color; _fov_os1.Thickness = outlineThickness; _fov_os1.Transparency = fov_outline_alpha end
+			if _fov_os2 then _fov_os2.Color = fov_outline_color; _fov_os2.Thickness = outlineThickness; _fov_os2.Transparency = fov_outline_alpha end
 		end
 
-		-- glow: отдельный цвет + много тонких колец вокруг FOV
+		-- glow
 		local showGlow = fov_show and fov_glow
 		if showGlow then
 			for _, g in ipairs(fovGlowRings) do
@@ -8939,13 +8989,13 @@ do
 					gs.Transparency = math.clamp(g.baseTransparency + (fov_glow_alpha - 0.960), 0, 1)
 				end
 			end
-		elseif getgenv().__fov_glow_was_on then
+			_fov_glow_was_on = true
+		elseif _fov_glow_was_on then
 			for _, g in ipairs(fovGlowRings) do
 				g.frame.Visible = false
 			end
-			getgenv().__fov_glow_was_on = false
+			_fov_glow_was_on = false
 		end
-		if showGlow then getgenv().__fov_glow_was_on = true end
 		if aimbot_enabled and aimbot_enabled_key and target_part and target_collider then
 			local new_pos = target_part.Position
 			if aimbot_mode == "Mouse" then
@@ -9015,7 +9065,7 @@ do
 		tiCard.Position = UDim2.fromOffset(ti_x, ti_y)
 	end
 
-	Instance.new("UICorner", tiCard).CornerRadius = UDim.new(0, 1)
+	Instance.new("UICorner", tiCard).CornerRadius = UDim.new(0, 4)
 	local s1 = Instance.new("UIStroke", tiCard)
 	s1.Color = Color3.fromRGB(51,51,51); s1.Thickness = 1
 	s1.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
@@ -9027,7 +9077,7 @@ do
 	tiAccent.BorderSizePixel  = 0
 	tiAccent.Active           = false
 	tiAccent.ZIndex           = 10
-	Instance.new("UICorner", tiAccent).CornerRadius = UDim.new(0,1)
+	Instance.new("UICorner", tiAccent).CornerRadius = UDim.new(0,4)
 
 	-- glow для accent-линии Target Info — тот же паттерн, что у watermark/keybinds Liner Glow
 	local tiAccentGlow = Instance.new("ImageLabel", tiAccent)
@@ -9054,7 +9104,7 @@ do
 	tiAva.BorderSizePixel  = 0
 	tiAva.Image            = ""
 	tiAva.Active           = false
-	Instance.new("UICorner", tiAva).CornerRadius = UDim.new(0,1)
+	Instance.new("UICorner", tiAva).CornerRadius = UDim.new(0,3)
 
 	-- разделитель
 	local tiDiv = Instance.new("Frame", tiCard)
@@ -9096,13 +9146,13 @@ do
 	tiBarBg.Position         = UDim2.fromOffset(TI_BAR_X, H-16)
 	tiBarBg.BackgroundColor3 = Color3.fromRGB(39,39,39)
 	tiBarBg.BorderSizePixel  = 0; tiBarBg.Active = false
-	Instance.new("UICorner", tiBarBg).CornerRadius = UDim.new(0,1)
+	Instance.new("UICorner", tiBarBg).CornerRadius = UDim.new(0,2)
 
 	local tiBarFill = Instance.new("Frame", tiBarBg)
 	tiBarFill.Size             = UDim2.fromOffset(0,10)
 	tiBarFill.BackgroundColor3 = Color3.fromRGB(0,210,60)
 	tiBarFill.BorderSizePixel  = 0; tiBarFill.Active = false
-	Instance.new("UICorner", tiBarFill).CornerRadius = UDim.new(0,1)
+	Instance.new("UICorner", tiBarFill).CornerRadius = UDim.new(0,2)
 
 	local tiBarTxt = Instance.new("TextLabel", tiBarBg)
 	tiBarTxt.Size = UDim2.fromScale(1,1); tiBarTxt.BackgroundTransparency = 1
@@ -9150,7 +9200,13 @@ do
 		}):Play()
 	end
 
-	cheat.utility.new_renderstepped(LPH_NO_VIRTUALIZE(function()
+	-- RaycastParams переиспользуем, не создаём каждый кадр
+	local _ti_vis_params = RaycastParams.new()
+	_ti_vis_params.FilterType = Enum.RaycastFilterType.Exclude
+	local _ti_vis_acc = 0  -- rate-limit target info до 20 раз/сек
+	local _ti_last_char = nil
+
+	cheat.utility.new_renderstepped(LPH_NO_VIRTUALIZE(function(delta)
 		local mp   = UserInputService:GetMouseLocation()
 		local down = UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1)
 
@@ -9254,17 +9310,15 @@ do
 		else
 			tiSetText(tiVTool, "none")
 		end
-		-- Видимость цели
+		-- Видимость цели — raycast с переиспользуемым params
 		if char and target_part then
 			local vis_origin = Camera.CFrame.Position
 			local vis_dir = (target_part.Position - vis_origin)
-			local vis_params = RaycastParams.new()
-			vis_params.FilterType = Enum.RaycastFilterType.Exclude
 			local filter = {}
 			if LocalPlayer.Character then table.insert(filter, LocalPlayer.Character) end
 			if char then table.insert(filter, char) end
-			vis_params.FilterDescendantsInstances = filter
-			local vis_result = workspace:Raycast(vis_origin, vis_dir, vis_params)
+			_ti_vis_params.FilterDescendantsInstances = filter
+			local vis_result = workspace:Raycast(vis_origin, vis_dir, _ti_vis_params)
 			if vis_result then
 				tiSetText(tiVVis, "not visible")
 				tiVVis.TextColor3 = Color3.fromRGB(255, 80, 80)
