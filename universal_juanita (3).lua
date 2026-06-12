@@ -1,9 +1,5 @@
 --!native
 --!optimize 2
--- ============================================================================
---  librehub (universal.lua) с ЗАМЕНЁННЫМ меню на juanitahaxx (samet).
---  Библиотека меню ВШИТА прямо в файл (без HttpGet). Код всех фич не изменён.
--- ============================================================================
 
 -- ---- LPH stubs (fabricated values) ----
 --!native
@@ -81,13 +77,250 @@ makefolder(ConfigFolder)
 local ThemeFolder = string.format( "%s\\%s\\", Folder, "Themes" )
 makefolder(ThemeFolder)
 
+-- ---- Loading screen (Исправлено: добавлено создание папки Fonts) ----
+do
+	local Players  = game:GetService("Players")
+	local CoreGui  = cloneref and cloneref(game:GetService("CoreGui")) or game:GetService("CoreGui")
+	local TweenSvc = game:GetService("TweenService")
+	local HttpSvc  = game:GetService("HttpService")
+	local RS       = game:GetService("RunService")
+	local startTime = tick()
+
+	-- Цвета (Дефолтные серые, как в скрипте)
+	local C_BG     = Color3.fromRGB(13, 13, 13)
+	local C_BORDER = Color3.fromRGB(176, 176, 209)
+	local C_ACCENT = Color3.fromRGB(176, 176, 209)
+	local C_TEXT   = Color3.fromRGB(220, 220, 230)
+	local C_MUTED  = Color3.fromRGB(130, 130, 140)
+	local C_ERR    = Color3.fromRGB(210, 70, 70)
+	local C_OK     = Color3.fromRGB(220, 220, 230)
+
+	-- проверка
+	local readyOk  = true
+	local readyMsg = ""
+	if not (isfile and writefile and makefolder) then readyOk=false; readyMsg="missing executor api" end
+	if readyOk and not Players.LocalPlayer then readyOk=false; readyMsg="no localplayer" end
+
+	-- ── СНАЧАЛА ГРУЗИМ ВСЁ, ПОТОМ ПОКАЗЫВАЕМ ──
+	local loaderFont = nil
+	local iconAsset  = ""
+
+	-- ИСПРАВЛЕНИЕ: Создаем папку для шрифтов, если её нет (чтобы не было ошибки nil)
+	if isfolder and not isfolder(FontsFolder) then makefolder(FontsFolder) end
+
+	local function downloadFile(url, path)
+		if isfile(path) then return true end
+		local ok, data = pcall(game.HttpGet, game, url)
+		if ok and data and #data > 100 then
+			writefile(path, data)
+			return true
+		end
+		return false
+	end
+
+	-- иконка
+	local iconPath = "moneyblox\\icon.png"
+	downloadFile(
+		"https://raw.githubusercontent.com/sh1shochek/frostvip/main/assets/icon.png",
+		iconPath
+	)
+	if isfile(iconPath) then
+		local ok, a = pcall(getcustomasset, iconPath)
+		if ok then iconAsset = a end
+	end
+
+	-- шрифт TTF
+	local TTF  = FontsFolder .. "TahomaXP.ttf"
+	local JSON = FontsFolder .. "TahomaXP.json"
+	downloadFile(
+		"https://raw.githubusercontent.com/sh1shochek/frostvip/main/assets/windows-xp-tahoma.ttf",
+		TTF
+	)
+	if isfile(TTF) then
+		if not isfile(JSON) then
+			local fd = {
+				name  = "TahomaXP",
+				faces = {{ name="Regular", weight=400, style="normal", assetId=getcustomasset(TTF) }}
+			}
+			writefile(JSON, HttpSvc:JSONEncode(fd))
+		end
+		local ok, f = pcall(Font.new, getcustomasset(JSON))
+		if ok and f then loaderFont = f end
+	end
+	-- ─────────────────────────────────────────────
+
+	-- GUI создаём ПОСЛЕ загрузки
+	local sg = Instance.new("ScreenGui")
+	sg.Name = "FrostLoaderGui"; sg.ResetOnSpawn = false
+	sg.DisplayOrder = 9999; sg.IgnoreGuiInset = true
+	pcall(function() sg.Parent = CoreGui end)
+	if not sg.Parent then sg.Parent = Players.LocalPlayer:WaitForChild("PlayerGui") end
+
+	local W, H   = 220, 50
+	local ICON_S = 36
+	local PAD    = 10
+	local TEXT_X = PAD + ICON_S + 10
+
+	-- карточка без скругления (острые углы)
+	local card = Instance.new("Frame", sg)
+	card.Size = UDim2.fromOffset(W, H)
+	card.AnchorPoint = Vector2.new(0.5, 0.5)
+	card.Position = UDim2.new(0.5, 0, 0.5, 0)
+	card.BackgroundColor3 = C_BG
+	card.BorderSizePixel = 0
+	card.BackgroundTransparency = 1
+	card.ZIndex = 2
+
+	local stroke = Instance.new("UIStroke", card)
+	stroke.Color = C_BORDER
+	stroke.Thickness = 2
+	stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	stroke.Transparency = 1
+
+	-- иконка слева
+	local imgLabel = Instance.new("ImageLabel", card)
+	imgLabel.Size = UDim2.fromOffset(ICON_S, ICON_S)
+	imgLabel.ImageTransparency = 1
+	imgLabel.Position = UDim2.fromOffset(PAD, math.floor((H - ICON_S) / 2))
+	imgLabel.BackgroundTransparency = 1
+	imgLabel.Image = iconAsset
+	imgLabel.ScaleType = Enum.ScaleType.Fit
+	imgLabel.ZIndex = 3
+
+	-- loading...
+	local lblTitle = Instance.new("TextLabel", card)
+	lblTitle.Size = UDim2.fromOffset(W - TEXT_X - 8, 22)
+	lblTitle.Position = UDim2.fromOffset(TEXT_X, 9)
+	lblTitle.BackgroundTransparency = 1
+	lblTitle.Text = "loading..."
+	lblTitle.TextSize = 12
+	lblTitle.TextTransparency = 1
+	lblTitle.TextColor3 = C_TEXT
+	lblTitle.TextXAlignment = Enum.TextXAlignment.Left
+	lblTitle.ZIndex = 3
+	if loaderFont then lblTitle.FontFace = loaderFont
+	else lblTitle.Font = Enum.Font.Code end
+
+	-- стадия
+	local lblStage = Instance.new("TextLabel", card)
+	lblStage.Size = UDim2.fromOffset(W - TEXT_X - 8, 16)
+	lblStage.Position = UDim2.fromOffset(TEXT_X, 22)
+	lblStage.BackgroundTransparency = 1
+	lblStage.Text = "Initializing"
+	lblStage.TextSize = 10
+	lblStage.TextTransparency = 1
+	lblStage.TextColor3 = C_MUTED
+	lblStage.TextXAlignment = Enum.TextXAlignment.Left
+	lblStage.ZIndex = 3
+	if loaderFont then lblStage.FontFace = loaderFont
+	else lblStage.Font = Enum.Font.Code end
+
+	-- прогресс-бар
+	local BAR_W = W - TEXT_X - 8
+	local barBg = Instance.new("Frame", card)
+	barBg.Size = UDim2.fromOffset(BAR_W, 3)
+	barBg.Position = UDim2.fromOffset(TEXT_X, H - 8)
+	barBg.BackgroundColor3 = Color3.fromRGB(35, 35, 40)
+	barBg.BorderSizePixel = 0
+	barBg.BackgroundTransparency = 1
+	barBg.ZIndex = 3
+
+	local barFill = Instance.new("Frame", barBg)
+	barFill.Size = UDim2.fromOffset(0, 3)
+	barFill.BackgroundColor3 = C_ACCENT
+	barFill.BorderSizePixel = 0
+	barFill.ZIndex = 4
+	barFill.BackgroundTransparency = 1
+
+	-- анимация точек
+	local dotN = 0
+	local dotConn = RS.Heartbeat:Connect(function()
+		dotN = (dotN + 1) % 4
+		if lblTitle and lblTitle.Parent then
+			lblTitle.Text = "loading" .. string.rep(".", dotN == 0 and 1 or dotN)
+		end
+	end)
+
+	-- плавное появление лоадера
+	local eIn = TweenInfo.new(0.5, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
+	task.spawn(function()
+		task.wait(0.05)
+		TweenSvc:Create(card, eIn, {
+			BackgroundTransparency = 0,
+			Size = UDim2.fromOffset(W, H)
+		}):Play()
+		TweenSvc:Create(stroke, eIn, {Transparency = 0}):Play()
+		task.wait(0.15)
+		TweenSvc:Create(barBg, eIn, {BackgroundTransparency = 0}):Play()
+		task.wait(0.08)
+		TweenSvc:Create(imgLabel, eIn, {ImageTransparency = 0}):Play()
+		TweenSvc:Create(lblTitle, eIn, {TextTransparency = 0}):Play()
+		task.wait(0.12)
+		TweenSvc:Create(lblStage, eIn, {TextTransparency = 0}):Play()
+		task.wait(0.1)
+		TweenSvc:Create(barFill, eIn, {BackgroundTransparency = 0, Size = UDim2.fromOffset(3, 3)}):Play()
+	end)
+
+	local function setProgress(pct, name)
+		lblStage.Text = name
+		TweenSvc:Create(barFill,
+			TweenInfo.new(0.5, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut),
+			{Size = UDim2.fromOffset(math.floor(BAR_W * pct), 3)}
+		):Play()
+	end
+
+	local stages = {
+		{0.10, "Initializing",        0.20},
+		{0.25, "Loading modules",     0.26},
+		{0.44, "Modules ready",       0.20},
+		{0.60, "Disabling Anticheat", 0.24},
+		{0.76, "Patching memory",     0.18},
+		{0.90, "Applying hooks",      0.14},
+		{1.00, "Complete!",           0.08},
+	}
+
+	task.spawn(function()
+		if not readyOk then
+			dotConn:Disconnect()
+			lblTitle.Text = "error"
+			lblTitle.TextColor3 = C_ERR
+			lblStage.Text = readyMsg
+			task.wait(3.5)
+			sg:Destroy(); return
+		end
+
+		for _, s in ipairs(stages) do
+			setProgress(s[1], s[2])
+			task.wait(s[3])
+		end
+
+		dotConn:Disconnect()
+		lblTitle.Text = "loaded in " .. string.format("%.2f", tick()-startTime) .. "s"
+		lblStage.Text = "Complete!"
+		lblStage.TextColor3 = C_OK
+		task.wait(0.75)
+
+		local eOut = TweenInfo.new(0.5, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
+		for _, el in {lblTitle, lblStage} do
+			TweenSvc:Create(el, eOut, {TextTransparency=1}):Play()
+		end
+		TweenSvc:Create(imgLabel, eOut, {ImageTransparency=1}):Play()
+		TweenSvc:Create(barBg,   eOut, {BackgroundTransparency=1}):Play()
+		TweenSvc:Create(barFill, eOut, {BackgroundTransparency=1}):Play()
+		TweenSvc:Create(card,    eOut, {BackgroundTransparency=1}):Play()
+		TweenSvc:Create(stroke,  eOut, {Transparency=1}):Play()
+		task.wait(0.5)
+		sg:Destroy()
+	end)
+end
+
 -- ---- Fonts & Images loader ----
 local Fonts, Images = LPH_JIT(function()
 	local RunService = game:GetService("RunService")
 	local HttpService = game:GetService("HttpService")
 
 	local Fonts = {
-		URL = "https://raw.githubusercontent.com/SWIMHUBISWIMMING/librehub/refs/heads/main/assets/",
+		URL = "https://raw.githubusercontent.com/sh1shochek/frostvip/main/assets/",
 
 		Names = {
 			"Tahoma",
@@ -145,7 +378,7 @@ local Fonts, Images = LPH_JIT(function()
 	end
 
 	local Images = {
-		URL = "https://raw.githubusercontent.com/SWIMHUBISWIMMING/librehub/refs/heads/main/assets/",
+		URL = "https://raw.githubusercontent.com/sh1shochek/frostvip/main/assets/",
 
 		Names = {
 			"combat",
@@ -432,13 +665,13 @@ local Library = {
                 }
             }
 
-            writefile(`{Library.Directory .. Library.Folders.Assets}/{Name}.font`, HttpService:JSONEncode(Data))
-            return Font.new(getcustomasset(`{Library.Directory .. Library.Folders.Assets}/{Name}.font`))
+            writefile((Library.Directory .. Library.Folders.Assets .. "/" .. Name .. ".font"), HttpService:JSONEncode(Data))
+            return Font.new(getcustomasset(Library.Directory .. Library.Folders.Assets .. "/" .. Name .. ".font"))
         end
 
         Library.Font = CustomFont:New("TahomaXP", 400, "Regular", {
             Id = "TahomaXP",
-            Url = "https://github.com/sametexe001/luas/raw/refs/heads/main/fonts/windows-xp-tahoma.ttf"
+            Url = "https://raw.githubusercontent.com/sh1shochek/frostvip/main/assets/windows-xp-tahoma.ttf"
         })
     end
 
@@ -659,8 +892,8 @@ local Library = {
             local Scale = Library:GetScreenScale()
             local DragDelta = (Input.Position - DragStart) / Scale
             
-            local NewX = StartPosition.X.Offset + DragDelta.X
-            local NewY = StartPosition.Y.Offset + DragDelta.Y
+            local NewX = StartOffsetX + DragDelta.X
+            local NewY = StartOffsetY + DragDelta.Y
 
             local ScreenSize = Gui.Parent.AbsoluteSize / Scale
             local GuiSize = Gui.AbsoluteSize / Scale
@@ -677,7 +910,8 @@ local Library = {
             if Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch then
                 Dragging = true
                 DragStart = Input.Position
-                StartPosition = Gui.Position
+                StartOffsetX = Gui.AbsolutePosition.X
+                StartOffsetY = Gui.AbsolutePosition.Y + GuiInset
     
                 if InputChanged then 
                     return
@@ -2202,7 +2436,7 @@ local Library = {
                     Parent = Library.Holder.Instance,
                     AnchorPoint = Vector2.new(0, 0),
                     Position = UDim2.new(0, 10, 0, GuiInset + 10),
-                    Size = UDim2.new(0, 0, 0, 53),
+                    Size = UDim2.new(0, 0, 0, 28),
                     BorderSizePixel = 0,
                     AutomaticSize = Enum.AutomaticSize.X,
                     BackgroundColor3 = Library.Theme["Background"]
@@ -2216,7 +2450,7 @@ local Library = {
                     ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
                     LineJoinMode = Enum.LineJoinMode.Miter,
                     Color = Library.Theme["Border"],
-                    BorderOffset = UDim.new(0, 1)
+                    Thickness = 1
                 }):AddToTheme({Color = 'Border'})
                 
                 Library:Create("UIStroke", {
@@ -2224,16 +2458,17 @@ local Library = {
                     Parent = Items["Watermark"].Instance,
                     ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
                     LineJoinMode = Enum.LineJoinMode.Miter,
-                    Color = Library.Theme["Outline"]
+                    Color = Library.Theme["Outline"],
+                    Thickness = 1
                 }):AddToTheme({Color = 'Outline'})
                 
                 Library:Create("UIPadding", {
                     Name = "\0",
                     Parent = Items["Watermark"].Instance,
-                    PaddingTop = UDim.new(0, 10),
-                    PaddingBottom = UDim.new(0, 10),
-                    PaddingRight = UDim.new(0, 10),
-                    PaddingLeft = UDim.new(0, 10)
+                    PaddingTop = UDim.new(0, 4),
+                    PaddingBottom = UDim.new(0, 4),
+                    PaddingRight = UDim.new(0, 8),
+                    PaddingLeft = UDim.new(0, 8)
                 })
                 
                 Items["Liner"] = Library:Create("Frame", {
@@ -2243,6 +2478,7 @@ local Library = {
                     Position = UDim2.new(1, 1, 0, 0),
                     Size = UDim2.new(1, 2, 0, 2),
                     BorderSizePixel = 0,
+                    ZIndex = 10,
                     BackgroundColor3 = Library.Theme["Accent"]
                 }):AddToTheme({BackgroundColor3 = 'Accent'})
                 
@@ -2258,15 +2494,19 @@ local Library = {
                     BackgroundTransparency = 1,
                     Position = UDim2.new(0.5, 0, 0.5, 0),
                     BorderSizePixel = 0,
+                    ZIndex = 1,
                     SliceCenter = Rect.new(Vector2.new(21, 21), Vector2.new(79, 79))
                 }):AddToTheme({ImageColor3 = 'Accent'})
-                
+
+                Items["Glow"].Instance.Visible = false
+
                 Items["Inline"] = Library:Create("Frame", {
                     Name = "\0",
                     Parent = Items["Watermark"].Instance,
-                    Size = UDim2.new(0, 0, 0, 25),
-                    Position = UDim2.new(0, 0, 0, 6),
+                    Size = UDim2.new(0, 0, 1, -2),
+                    Position = UDim2.new(0, 0, 0, 2),
                     BorderSizePixel = 0,
+                    ZIndex = 2,
                     AutomaticSize = Enum.AutomaticSize.X,
                     BackgroundColor3 = Library.Theme["Inline"]
                 }):AddToTheme({BackgroundColor3 = 'Inline'})
@@ -2320,6 +2560,7 @@ local Library = {
                     Parent = Items["Holder"].Instance,
                     TextColor3 = Library.Theme["Accent"],
                     Text = Watermark.Name,
+                    ZIndex = 6,
                     BackgroundTransparency = 1,
                     BorderSizePixel = 0,
                     AutomaticSize = Enum.AutomaticSize.XY
@@ -2336,6 +2577,14 @@ local Library = {
 
             function Watermark:SetVisibility(Bool)
                 Items["Watermark"].Instance.Visible = Bool
+                if Items["Glow"] and Items["Glow"].Instance then
+                    Items["Glow"].Instance.Visible = Bool
+                    if Bool then
+                        Items["Glow"].Instance.ImageTransparency = 0.55
+                    else
+                        Items["Glow"].Instance.ImageTransparency = 0.8
+                    end
+                end
             end
 
             function Watermark:SetText(Text)
@@ -2358,6 +2607,7 @@ local Library = {
                     Parent = Items["Holder"].Instance,
                     TextColor3 = Library.Theme["Text"],
                     Text = Text,
+                    ZIndex = 6,
                     BackgroundTransparency = 1,
                     BorderSizePixel = 0,
                     AutomaticSize = Enum.AutomaticSize.XY
@@ -2381,212 +2631,333 @@ local Library = {
         local KeybindTweenInfo = TweenInfo.new(0.55, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out) -- this is only for the keybind list and should not be used anywhere else
         
         Library.KeybindList = function(Self)
+            local TextService = game:GetService("TextService")
+
             local KeybindList = {
                 Items = {},
-                Keys = {}
+                Keys = {},
+                Enabled = true
             }
-        
+
+            local function GetTextWidth(Text)
+                local ok, size = pcall(function()
+                    return TextService:GetTextSize(tostring(Text), Library.FontSize, Enum.Font.Code, Vector2.new(1000, 1000))
+                end)
+
+                if ok and size then
+                    return size.X
+                end
+
+                return 0
+            end
+
             local Items = {} do
                 Items["KeybindList"] = Library:Create("Frame", {
-                    Name = "\0", 
-                    Parent = Library.Holder.Instance, 
-                    AnchorPoint = Vector2.new(0, 0.5), 
-                    Position = UDim2.new(0, 10, 0.5, 0), 
-                    Size = UDim2.new(0, 34, 0, 53), 
-                    ClipsDescendants = true, 
-                    BorderSizePixel = 0, 
+                    Name = "\0",
+                    Parent = Library.Holder.Instance,
+                    AnchorPoint = Vector2.new(0, 0),
+                    Position = UDim2.new(0, 10, 0, GuiInset + 44),
+                    Size = UDim2.new(0, 122, 0, 30),
+                    ClipsDescendants = false,
+                    BorderSizePixel = 0,
                     BackgroundColor3 = Library.Theme["Background"]
                 }):AddToTheme({BackgroundColor3 = "Background"})
 
+                Library:Create("UICorner", {
+                    Name = "\0",
+                    Parent = Items["KeybindList"].Instance,
+                    CornerRadius = UDim.new(0, 4)
+                })
+
                 Items["KeybindList"]:MakeDraggable()
-        
+
                 Library:Create("UIStroke", {
-                    Parent = Items["KeybindList"].Instance, 
-                    ApplyStrokeMode = Enum.ApplyStrokeMode.Border, 
-                    LineJoinMode = Enum.LineJoinMode.Miter, 
-                    Color = Library.Theme["Border"], 
-                    BorderOffset = UDim.new(0, 1)
+                    Name = "\0",
+                    Parent = Items["KeybindList"].Instance,
+                    ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+                    LineJoinMode = Enum.LineJoinMode.Miter,
+                    Color = Library.Theme["Border"],
+                    Thickness = 1
                 }):AddToTheme({Color = "Border"})
 
                 Library:Create("UIStroke", {
-                    Parent = Items["KeybindList"].Instance, 
-                    ApplyStrokeMode = Enum.ApplyStrokeMode.Border, 
-                    LineJoinMode = Enum.LineJoinMode.Miter, 
-                    Color = Library.Theme["Outline"]
+                    Name = "\0",
+                    Parent = Items["KeybindList"].Instance,
+                    ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+                    LineJoinMode = Enum.LineJoinMode.Miter,
+                    Color = Library.Theme["Outline"],
+                    Thickness = 1
                 }):AddToTheme({Color = "Outline"})
-        
-                Library:Create("UIPadding", {
-                    Parent = Items["KeybindList"].Instance, 
-                    PaddingTop = UDim.new(0, 10), 
-                    PaddingBottom = UDim.new(0, 12), 
-                    PaddingRight = UDim.new(0, 10), 
-                    PaddingLeft = UDim.new(0, 10)
-                })
-        
+
                 Items["Liner"] = Library:Create("Frame", {
-                    Parent = Items["KeybindList"].Instance, 
-                    AnchorPoint = Vector2.new(1, 0), 
-                    Position = UDim2.new(1, 1, 0, 0), 
-                    Size = UDim2.new(1, 2, 0, 2), 
-                    BorderSizePixel = 0, 
+                    Name = "\0",
+                    Parent = Items["KeybindList"].Instance,
+                    AnchorPoint = Vector2.new(0.5, 0),
+                    Position = UDim2.new(0.5, 0, 0, 0),
+                    Size = UDim2.new(1, 2, 0, 2),
+                    BorderSizePixel = 0,
+                    ZIndex = 10,
                     BackgroundColor3 = Library.Theme["Accent"]
                 }):AddToTheme({BackgroundColor3 = "Accent"})
-        
+
                 Items["Glow"] = Library:Create("ImageLabel", {
-                    Parent = Items["Liner"].Instance, 
-                    ImageColor3 = Library.Theme["Accent"], 
-                    ScaleType = Enum.ScaleType.Slice, 
-                    ImageTransparency = 0.8, 
-                    Size = UDim2.new(1, 25, 1, 25), 
-                    AnchorPoint = Vector2.new(0.5, 0.5), 
-                    Image = "http://www.roblox.com/asset/?id=18245826428", 
-                    BackgroundTransparency = 1, 
-                    Position = UDim2.new(0.5, 0, 0.5, 0), 
-                    BorderSizePixel = 0, 
+                    Name = "\0",
+                    Parent = Items["Liner"].Instance,
+                    ImageColor3 = Library.Theme["Accent"],
+                    ScaleType = Enum.ScaleType.Slice,
+                    ImageTransparency = 0.8,
+                    Size = UDim2.new(1, 25, 1, 25),
+                    AnchorPoint = Vector2.new(0.5, 0.5),
+                    Image = "http://www.roblox.com/asset/?id=18245826428",
+                    BackgroundTransparency = 1,
+                    Position = UDim2.new(0.5, 0, 0.5, 0),
+                    BorderSizePixel = 0,
+                    ZIndex = 1,
                     SliceCenter = Rect.new(Vector2.new(21, 21), Vector2.new(79, 79))
                 }):AddToTheme({ImageColor3 = "Accent"})
-        
+
+                Items["Glow"].Instance.Visible = false
+
                 Items["Inline"] = Library:Create("Frame", {
-                    Parent = Items["KeybindList"].Instance, 
-                    Size = UDim2.new(0, 8, 0, 25), 
-                    Position = UDim2.new(0, 0, 0, 6), 
-                    ClipsDescendants = true,
-                    BorderSizePixel = 0, 
+                    Name = "\0",
+                    Parent = Items["KeybindList"].Instance,
+                    Position = UDim2.new(0, 2, 0, 4),
+                    Size = UDim2.new(1, -4, 1, -6),
+                    ClipsDescendants = false,
+                    BorderSizePixel = 0,
                     BackgroundColor3 = Library.Theme["Inline"]
                 }):AddToTheme({BackgroundColor3 = "Inline"})
-        
+
                 Library:Create("UIStroke", {
+                    Name = "\0",
                     Parent = Items["Inline"].Instance,
-                    ApplyStrokeMode = Enum.ApplyStrokeMode.Border, 
-                    LineJoinMode = Enum.LineJoinMode.Miter, 
-                    Color = Library.Theme["Outline"]
+                    ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+                    LineJoinMode = Enum.LineJoinMode.Miter,
+                    Color = Library.Theme["Outline"],
+                    Thickness = 1
                 }):AddToTheme({Color = "Outline"})
 
                 Library:Create("UIStroke", {
-                    Parent = Items["Inline"].Instance, 
-                    ApplyStrokeMode = Enum.ApplyStrokeMode.Border, 
-                    LineJoinMode = Enum.LineJoinMode.Miter, 
-                    Color = Library.Theme["Border"], 
-                    BorderOffset = UDim.new(0, 1)
+                    Name = "\0",
+                    Parent = Items["Inline"].Instance,
+                    ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+                    LineJoinMode = Enum.LineJoinMode.Miter,
+                    Color = Library.Theme["Border"],
+                    Thickness = 1
                 }):AddToTheme({Color = "Border"})
-        
+
+                Items["Title"] = Library:Create("TextLabel", {
+                    Name = "\0",
+                    Parent = Items["Inline"].Instance,
+                    FontFace = Library.Font,
+                    TextSize = Library.FontSize,
+                    TextColor3 = Library.Theme["Accent"],
+                    Text = "Keybinds",
+                    ZIndex = 6,
+                    BackgroundTransparency = 1,
+                    BorderSizePixel = 0,
+                    Position = UDim2.new(0, 0, 0, 1),
+                    Size = UDim2.new(1, 0, 0, 15),
+                    TextXAlignment = Enum.TextXAlignment.Center,
+                    TextYAlignment = Enum.TextYAlignment.Center,
+                    TextTruncate = Enum.TextTruncate.None
+                }):AddToTheme({TextColor3 = "Accent"})
+
+                Items["Separator"] = Library:Create("Frame", {
+                    Name = "\0",
+                    Parent = Items["Inline"].Instance,
+                    Position = UDim2.new(0, 4, 0, 18),
+                    Size = UDim2.new(1, -8, 0, 1),
+                    BorderSizePixel = 0,
+                    BackgroundColor3 = Library.Theme["Outline"]
+                }):AddToTheme({BackgroundColor3 = "Outline"})
+
                 Items["Content"] = Library:Create("Frame", {
-                    Parent = Items["Inline"].Instance, 
-                    BackgroundTransparency = 1, 
-                    Position = UDim2.new(0, 0, 0, 0), 
-                    Size = UDim2.new(0, 0, 0, 25), 
-                    BorderSizePixel = 0
+                    Name = "\0",
+                    Parent = Items["Inline"].Instance,
+                    BackgroundTransparency = 1,
+                    Position = UDim2.new(0, 7, 0, 22),
+                    Size = UDim2.new(1, -14, 0, 0),
+                    BorderSizePixel = 0,
+                    ClipsDescendants = false
                 })
             end
-        
+
             Library.KeyList = KeybindList
             Self.KeybindList = KeybindList
-        
+            KeybindList.Items = Items
+
             function KeybindList:SetVisibility(Bool)
-                Items["KeybindList"].Instance.Visible = Bool
+                KeybindList.Enabled = Bool
+                KeybindList:UpdateSize()
+                if Items["Glow"] and Items["Glow"].Instance then
+                    Items["Glow"].Instance.Visible = Bool
+                    if Bool then
+                        Items["Glow"].Instance.ImageTransparency = 0.55
+                    else
+                        Items["Glow"].Instance.ImageTransparency = 0.8
+                    end
+                end
             end
-        
+
             function KeybindList:UpdateSize()
-                local Width = 0
-                local Y = 6
+                local Width = math.max(160, GetTextWidth("Keybinds") + 28)
+                local Y = 0
                 local Count = 0
-        
+
                 for Index, Value in KeybindList.Keys do
                     if Value.Showing then
+                        local Text = Value.Object._fullText or ""
+                        local RowWidth = GetTextWidth(Text) + 2
                         local RowHeight = 14
-        
+
                         Value.Object.Instance.Visible = true
-                        Width = math.max(Width, Value.Object.Instance.TextBounds.X)
-        
-                        Value.Object:Tween({Position = UDim2.new(0, 8, 0, Y), Size = UDim2.new(0, Value.Object.Instance.TextBounds.X, 0, RowHeight), TextTransparency = 0}, KeybindTweenInfo)
-        
-                        Y += RowHeight + 4
+                        Width = math.max(Width, RowWidth + 24)
+
+                        Value.Object:Tween({
+                            Position = UDim2.new(0, 0, 0, Y),
+                            Size = UDim2.new(1, 0, 0, RowHeight),
+                        }, KeybindTweenInfo)
+                        if Value.Object._nameLabel then
+                            Value.Object._nameLabel:Tween({TextTransparency = 0}, KeybindTweenInfo)
+                        end
+                        if Value.Object._keyLabel then
+                            Value.Object._keyLabel:Tween({TextTransparency = 0}, KeybindTweenInfo)
+                        end
+
+                        Y += RowHeight + 2
                         Count += 1
                     end
                 end
-        
-                local TargetHeight = Count > 0 and math.max(25, Y + 5) or 25
-        
-                Items["Content"].Instance.Size = UDim2.new(0, Width, 0, TargetHeight)
-        
-                Items["Inline"]:Tween({Size = UDim2.new(0, Width + 14, 0, TargetHeight)}, KeybindTweenInfo)
-                Items["KeybindList"]:Tween({Size = UDim2.new(0, Width + 34, 0, TargetHeight + 28)}, KeybindTweenInfo)
 
-                local ActiveKeys = { }
+                local ContentH = Count > 0 and (Y - 2) or 0
+                local TotalH = 28 + ContentH + 8
 
-                for Index, Value in KeybindList.Keys do
-                    if Value.Showing then
-                        table.insert(ActiveKeys, Value.Object.Instance.Text)
-                    end
-                end
-        
-                if #ActiveKeys == 0 then 
-                    Items["KeybindList"].Instance.Visible = false
-                else
-                    Items["KeybindList"].Instance.Visible = true
-                end
+                Items["Content"]:Tween({Size = UDim2.new(0, Width - 18, 0, ContentH)}, KeybindTweenInfo)
+                Items["Inline"]:Tween({Size = UDim2.new(0, Width - 4, 0, TotalH - 6)}, KeybindTweenInfo)
+                Items["KeybindList"]:Tween({Size = UDim2.new(0, Width, 0, TotalH)}, KeybindTweenInfo)
+
+                Items["KeybindList"].Instance.Visible = KeybindList.Enabled and Count > 0
             end
-        
+
             function KeybindList:Add(Name, Mode, Key)
-                local NewKeyText = Library:Create("TextLabel", {
-                    Parent = Items["Content"].Instance, 
-                    FontFace = Library.Font, 
-                    TextSize = Library.FontSize, 
-                    TextColor3 = Library.Theme["Text"], 
-                    Text = Name .. " - " .. Mode .. " [" .. Key .. "]", 
-                    BackgroundTransparency = 1, 
-                    BorderSizePixel = 0, 
-                    Size = UDim2.new(0, 0, 0, 14), 
-                    Position = UDim2.new(0, -8, 0, 6), 
-                    TextTransparency = 1, 
-                    Visible = false, 
-                    TextYAlignment = Enum.TextYAlignment.Center, 
-                    TextXAlignment = Enum.TextXAlignment.Left
+                -- Контейнер для строки
+                local RowFrame = Library:Create("Frame", {
+                    Name = "\0",
+                    Parent = Items["Content"].Instance,
+                    BackgroundTransparency = 1,
+                    BorderSizePixel = 0,
+                    Size = UDim2.new(1, 0, 0, 14),
+                    Position = UDim2.new(0, 0, 0, 0),
+                    Visible = false,
+                    ClipsDescendants = false
+                })
+                -- Имя кейбинда — слева
+                local NameLabel = Library:Create("TextLabel", {
+                    Name = "\0",
+                    Parent = RowFrame.Instance,
+                    FontFace = Library.Font,
+                    TextSize = Library.FontSize,
+                    TextColor3 = Library.Theme["Text"],
+                    Text = Name or "",
+                    ZIndex = 6,
+                    BackgroundTransparency = 1,
+                    BorderSizePixel = 0,
+                    Size = UDim2.new(0.5, 0, 1, 0),
+                    Position = UDim2.new(0, 0, 0, 0),
+                    TextTransparency = 1,
+                    TextYAlignment = Enum.TextYAlignment.Center,
+                    TextXAlignment = Enum.TextXAlignment.Left,
+                    TextTruncate = Enum.TextTruncate.AtEnd,
+                    ClipsDescendants = false
                 }):AddToTheme({TextColor3 = "Text"})
-        
+                -- Кнопка бинда — справа
+                local KeyLabel = Library:Create("TextLabel", {
+                    Name = "\0",
+                    Parent = RowFrame.Instance,
+                    FontFace = Library.Font,
+                    TextSize = Library.FontSize,
+                    TextColor3 = Library.Theme["Accent"],
+                    Text = Key ~= "" and ("[" .. Key .. "]") or "[none]",
+                    ZIndex = 6,
+                    BackgroundTransparency = 1,
+                    BorderSizePixel = 0,
+                    Size = UDim2.new(0.5, 0, 1, 0),
+                    Position = UDim2.new(0.5, 0, 0, 0),
+                    TextTransparency = 1,
+                    TextYAlignment = Enum.TextYAlignment.Center,
+                    TextXAlignment = Enum.TextXAlignment.Right,
+                    TextTruncate = Enum.TextTruncate.None,
+                    ClipsDescendants = false
+                }):AddToTheme({TextColor3 = "Accent"})
+                local NewKeyText = RowFrame
+                NewKeyText._nameLabel = NameLabel
+                NewKeyText._keyLabel = KeyLabel
+                NewKeyText._fullText = (Name ~= "" and Key ~= "") and (Name .. "  [" .. Key .. "]") or ""
+
                 local CanShow = true
-        
+
                 local NewKey = {
                     Object = NewKeyText,
                     Showing = false
                 }
-        
+
                 table.insert(KeybindList.Keys, NewKey)
-        
+
                 function NewKey:SetVis(Bool)
                     CanShow = Bool
 
                     if not Bool then
                         NewKey:SetStatus(false)
+                    elseif NewKey.Showing then
+                        KeybindList:UpdateSize()
                     end
                 end
-        
+
                 function NewKey:Set(Name, Mode, Key)
-                    NewKey.Object.Instance.Text = Name .. " - " .. Mode .. " [" .. Key .. "]"
+                    local keyStr = (Key ~= "" and Key ~= "none" and Key ~= "None") and Key or "none"
+                    -- Обновляем раздельные лейблы
+                    if NewKey.Object._nameLabel then
+                        NewKey.Object._nameLabel.Instance.Text = Name
+                    end
+                    if NewKey.Object._keyLabel then
+                        NewKey.Object._keyLabel.Instance.Text = "[" .. keyStr .. "]"
+                    end
+                    -- Полный текст для расчёта ширины
+                    NewKey.Object._fullText = Name .. "  [" .. keyStr .. "]"
 
                     KeybindList:UpdateSize()
                 end
-        
+
                 function NewKey:SetStatus(Bool)
                     Bool = Bool and CanShow
-        
+
                     if NewKey.Showing == Bool then
+                        KeybindList:UpdateSize()
                         return
                     end
-        
+
                     NewKey.Showing = Bool
-        
+
                     if Bool then
                         NewKeyText.Instance.Visible = true
-                        NewKeyText.Instance.Position = UDim2.new(0, 0, 0, NewKeyText.Instance.Position.Y.Offset)
-                        NewKeyText.Instance.TextTransparency = 1
-        
+                        if NewKeyText._nameLabel then
+                            NewKeyText._nameLabel.Instance.TextTransparency = 1
+                            NewKeyText._nameLabel:Tween({TextTransparency = 0}, KeybindTweenInfo)
+                        end
+                        if NewKeyText._keyLabel then
+                            NewKeyText._keyLabel.Instance.TextTransparency = 1
+                            NewKeyText._keyLabel:Tween({TextTransparency = 0}, KeybindTweenInfo)
+                        end
                         KeybindList:UpdateSize()
                     else
-                        NewKeyText:Tween({Position = UDim2.new(0, 0, 0, NewKeyText.Instance.Position.Y.Offset), TextTransparency = 1}, KeybindTweenInfo)
-        
+                        if NewKeyText._nameLabel then
+                            NewKeyText._nameLabel:Tween({TextTransparency = 1}, KeybindTweenInfo)
+                        end
+                        if NewKeyText._keyLabel then
+                            NewKeyText._keyLabel:Tween({TextTransparency = 1}, KeybindTweenInfo)
+                        end
                         KeybindList:UpdateSize()
-        
                         task.delay(KeybindTweenInfo.Time, function()
                             if not NewKey.Showing then
                                 NewKeyText.Instance.Visible = false
@@ -2594,12 +2965,12 @@ local Library = {
                         end)
                     end
                 end
-        
+
                 return NewKey
             end
-        
+
             KeybindList:UpdateSize()
-        
+
             return setmetatable(KeybindList, Library)
         end
 
@@ -2674,6 +3045,7 @@ local Library = {
                     Parent = Items["Notification"].Instance,
                     TextColor3 = Library.Theme["Accent"],
                     Text = Name,
+                    RichText = true,
                     AnchorPoint = Vector2.new(0, 0.5),
                     BackgroundTransparency = 1,
                     Position = UDim2.new(0, 3, 0.5, -1),
@@ -2949,48 +3321,20 @@ local Library = {
                 end
             end)
 
-            -- the title animation logic below
-            local OffsetX = 8
-            local OffsetY = 12
-            local Width = 7 -- this would be the gap between each letter
-
-            local WaveHeight = 4
-            local WaveSpeed =  2.5
-            local WaveSpacing = 0.25
-
-            local Letters = { } -- try not to make the title too long since every letter is created individually for the animation
-
-            for Index = 1, #Window.Name do 
-                local Letter = Window.Name:sub(Index, Index)
-
-                local NewLetter = Library:Create("TextLabel",{
-                    Name = "\0",
-                    Size = UDim2.new(0, Width, 0, 0),
-                    Position = UDim2.new(0, OffsetX + ((Index - 1) * Width), 0, OffsetY),
-                    BackgroundTransparency = 1,
-                    BorderSizePixel = 0,
-                    Text = Letter,
-                    FontFace = Library.Font,
-                    TextSize = Library.FontSize,
-                    Parent = Items["Background"].Instance
-                }):AddToTheme({TextColor3 = 'Accent'})
-
-                Letters[Index] = {
-                    LetterInstance = NewLetter,
-                    X = OffsetX + ((Index - 1) * Width),
-                    Y = OffsetY
-                }
-            end
-
-            Library:Connect(RunService.RenderStepped, function()
-                local Tick = tick()
-
-                for Index, Value in Letters do 
-                    local OffsetY = math.sin((Tick * WaveSpeed) - (Index * WaveSpacing)) * WaveHeight
-
-                    Value.LetterInstance.Instance.Position = UDim2.new(0, Value.X, 0, Value.Y + OffsetY)
-                end
-            end)            
+            -- static title (wave animation removed)
+            Items["Title"] = Library:Create("TextLabel", {
+                Name = "\0",
+                FontFace = Library.Font,
+                TextSize = Library.FontSize,
+                TextXAlignment = Enum.TextXAlignment.Left,
+                Parent = Items["Background"].Instance,
+                TextColor3 = Library.Theme["Accent"],
+                Text = Window.Name,
+                Position = UDim2.new(0, 8, 0, 9),
+                BackgroundTransparency = 1,
+                BorderSizePixel = 0,
+                AutomaticSize = Enum.AutomaticSize.XY
+            }):AddToTheme({TextColor3 = 'Accent'})
 
             Window:Center()
             return setmetatable(Window, Library)
@@ -4937,6 +5281,16 @@ local Library = {
         end
 
         Library.Init = function(Self)
+            -- Ensure the Watermark and Keybind list objects exist so the menu
+            -- toggles below have real objects to call :SetVisibility on.
+            if type(rawget(Self, "Watermark")) ~= "table" then
+                Self:Watermark({ Name = Self.Name or "novahub" })
+            end
+
+            if type(rawget(Self, "KeybindList")) ~= "table" then
+                Self:KeybindList()
+            end
+
             local SettingsPage = Self:Page({Name = "settings"}) do 
                 local ThemingSection = SettingsPage:Section({Name = "Theming", Side = 2}) do
                     for Index, Value in Library.Theme do 
@@ -5048,28 +5402,6 @@ local Library = {
                             Library.MenuKeybind = Library.Flags["MenuKeybind"].Key
                         end
                     })
-
-                    if Self.Watermark then
-                        MenuSection:Toggle({
-                            Name = "Watermark",
-                            Flag = "Watermark",
-                            Default = true,
-                            Callback = function(Value)
-                                Self.Watermark:SetVisibility(Value)
-                            end
-                        })
-                    end
-
-                    if Self.KeybindList then 
-                        MenuSection:Toggle({
-                            Name = "Keybind list",
-                            Flag = "Keybind list",
-                            Default = true,
-                            Callback = function(Value)
-                                Self.KeybindList:SetVisibility(Value)
-                            end
-                        })
-                    end
                 end
 
                 local ConfigName 
@@ -5224,9 +5556,9 @@ Library.Theme = setmetatable({}, {
 	end
 })
 
--- Library.Notification(text, time)  ->  NewLib:Notification(name, duration, color)
-function Library.Notification(text, time)
-	return NewLib:Notification(text, time or 5, NewLib.Theme and NewLib.Theme.Accent)
+-- Library.Notification(text, time, color)  ->  NewLib:Notification(name, duration, color)
+function Library.Notification(text, time, color)
+	return NewLib:Notification(text, time or 5, color or (NewLib.Theme and NewLib.Theme.Accent))
 end
 
 -- Utility.RichText(text, color)
@@ -5262,6 +5594,7 @@ end
 Library.TweenSpeed = 0.4
 Library.TweenStyle = Enum.EasingStyle.Exponential
 Library.Flags = NewLib.Flags
+Library.SetFlags = NewLib.SetFlags
 
 -- ---------------------------------------------------------------------------
 --  Хелперы конвертации колбэков
@@ -5331,6 +5664,8 @@ end
 -- ---------------------------------------------------------------------------
 local function wrapSection(newSection)
 	local S = {}
+	S.Items = newSection.Items  -- проксируем Items для прямого доступа из кода фич (ESP Preview и т.д.)
+	S._section = newSection     -- FIX: сохраняем ссылку чтобы код мог делать ._section.Page
 
 	function S:Toggle(cfg)
 		cfg = cfg or {}
@@ -5520,8 +5855,166 @@ end
 -- ---------------------------------------------------------------------------
 function Library:Window(cfg)
 	cfg = cfg or {}
-	local name = (cfg.namestart or "swim") .. (cfg.nameend or "hub")
+	local name = (cfg.namestart or "frost") .. (cfg.nameend or ".vip")
 	local newWindow = NewLib:Window({ Name = name })
+
+	-- Build the Watermark and Keybind list NOW (before features are created),
+	-- so that feature keybinds register themselves into the keybind list and
+	-- the Menu toggles have real objects to call :SetVisibility on.
+	if type(rawget(newWindow, "Watermark")) ~= "table" then
+		newWindow:Watermark({ Name = name })
+	end
+	if type(rawget(newWindow, "KeybindList")) ~= "table" then
+		newWindow:KeybindList()
+	-- ---- Glow для watermark и keybinds (indicator glow) ----
+	do
+		local CoreGuiRef  = cloneref and cloneref(game:GetService("CoreGui")) or game:GetService("CoreGui")
+		local glowSg = Instance.new("ScreenGui")
+		glowSg.Name           = "WMGlowGui"
+		glowSg.DisplayOrder   = 48
+		glowSg.IgnoreGuiInset = false
+		glowSg.ResetOnSpawn   = false
+		pcall(function() glowSg.Parent = CoreGuiRef end)
+		if not glowSg.Parent then
+			glowSg.Parent = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
+		end
+
+		local function makeGlowLayer(thick, transp, pad)
+			local f = Instance.new("Frame", glowSg)
+			f.BackgroundTransparency = 1
+			f.BorderSizePixel        = 0
+			f.Visible                = false
+			local s = Instance.new("UIStroke", f)
+			s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+			s.LineJoinMode    = Enum.LineJoinMode.Miter
+			s.Thickness       = thick
+			s.Transparency    = transp
+			s.Color           = Color3.fromRGB(176, 176, 209)
+			return {f=f, s=s, pad=pad}
+		end
+
+		local WM_GLOW_LAYERS    = 80
+		local WM_GLOW_RADIUS_PX = 8
+		local WM_GLOW_INTENSITY = 0.95
+
+		local GLOW_DEFS = {}
+		local WM_PAD_START = 0
+		for i = 1, WM_GLOW_LAYERS do
+			local t      = i / WM_GLOW_LAYERS
+			local alpha  = math.exp(-(t * 1.8)^2)
+			local transp = 1 - alpha * (1 - WM_GLOW_INTENSITY)
+			local pad    = WM_PAD_START + t * WM_GLOW_RADIUS_PX
+			table.insert(GLOW_DEFS, {th=1, tr=transp, pad=pad})
+		end
+
+		local function buildGlow()
+			local t = {}
+			for _, d in GLOW_DEFS do
+				table.insert(t, makeGlowLayer(d.th, d.tr, d.pad))
+			end
+			return t
+		end
+
+		local wmGlowLayers = buildGlow()
+		local kbGlowLayers = buildGlow()
+		local glowOn = false   -- по умолчанию выключено
+
+		local function applyGlow(layers, target, on)
+			if not target or not target.Parent or not on then
+				for _, l in layers do l.f.Visible = false end
+				return
+			end
+			local abs = target.AbsolutePosition
+			local sz  = target.AbsoluteSize
+			for _, l in layers do
+				local p = l.pad
+				l.f.Position = UDim2.fromOffset(abs.X - p, abs.Y - p)
+				l.f.Size     = UDim2.fromOffset(sz.X + p*2, sz.Y + p*2)
+				l.f.Visible  = true
+			end
+		end
+
+		local wmInst, kbInst = nil, nil
+		task.delay(1.5, function()
+			local WM = rawget(newWindow, "Watermark")
+			if WM then
+				local item = WM.Items and WM.Items["Watermark"]
+				wmInst = (type(item) == "table" and item.Instance) or item
+				if wmInst and not wmInst:IsA("Frame") then wmInst = nil end
+			end
+			local KB = rawget(newWindow, "KeybindList")
+			if KB then
+				local item = KB.Items and KB.Items["KeybindList"]
+				local raw = (type(item) == "table" and item.Instance) or item
+				if raw and (raw:IsA("Frame") or raw:IsA("ScrollingFrame")) then
+					kbInst = raw
+				end
+			end
+		end)
+
+		local wmGlowHidden = true
+		game:GetService("RunService").RenderStepped:Connect(function()
+			if not glowOn then
+				if not wmGlowHidden then
+					for _, l in wmGlowLayers do l.f.Visible = false end
+					for _, l in kbGlowLayers do l.f.Visible = false end
+					wmGlowHidden = true
+				end
+				return
+			end
+			wmGlowHidden = false
+			applyGlow(wmGlowLayers, wmInst, glowOn)
+			applyGlow(kbGlowLayers, kbInst, glowOn)
+		end)
+
+		newWindow._wmGlowLayers = wmGlowLayers
+		newWindow._kbGlowLayers = kbGlowLayers
+		newWindow._setGlow = function(bool)
+			glowOn = bool
+		end
+	end
+	end
+
+	-- ---- Watermark live info (FPS / ping / time) ----
+	do
+		local WM = rawget(newWindow, "Watermark")
+		if WM and type(WM) == "table" then
+			local ok = pcall(function()
+				local StatsService = game:GetService("Stats")
+				local uid = tostring(game:GetService("Players").LocalPlayer.UserId)
+
+				local frames, lastTick, fps = 0, os.clock(), 0
+				game:GetService("RunService").RenderStepped:Connect(function()
+					frames += 1
+					local now = os.clock()
+					if now - lastTick >= 0.5 then
+						fps = math.floor((frames / (now - lastTick)) + 0.5)
+						frames = 0
+						lastTick = now
+					end
+				end)
+
+				local accum = 0
+				game:GetService("RunService").RenderStepped:Connect(function(dt)
+					accum += dt
+					if accum < 0.25 then return end
+					accum = 0
+
+					local ping = 0
+					pcall(function()
+						ping = math.floor(StatsService.Network.ServerStatsItem["Data Ping"]:GetValue() + 0.5)
+					end)
+
+					if WM.SetText then
+						WM:SetText(string.format(
+							"frost.vip - developer - v1.0 - %d fps - %dms - uid: %s - %s",
+							fps, ping, uid, os.date("%H:%M:%S")
+						))
+					end
+				end)
+			end)
+		end
+	end
 
 	local W = {}
 	W.__new = newWindow
@@ -5660,12 +6153,12 @@ cheat.utility = {} do
 			end
 		end)() end
 	local connection; connection = RunService.Heartbeat:Connect(LPH_NO_VIRTUALIZE(function(delta)
-		for _, func in pairs(cheat.connections.heartbeats) do
+		for _, func in cheat.connections.heartbeats do
 			func(delta)
 		end
 	end))
 	local connection1; connection1 = RunService.RenderStepped:Connect(LPH_NO_VIRTUALIZE(function(delta)
-		for _, func in pairs(cheat.connections.renderstepped) do
+		for _, func in cheat.connections.renderstepped do
 			func(delta)
 		end
 	end))
@@ -5676,7 +6169,7 @@ cheat.utility = {} do
 			cheat.connections.heartbeats[key] = nil
 		end
 		for key, _ in pairs(cheat.connections.renderstepped) do
-			cheat.connections.heartbeats[key] = nil
+			cheat.connections.renderstepped[key] = nil
 		end
 		for _, drawing in pairs(cheat.drawings) do
 			drawing:Remove()
@@ -5717,9 +6210,7 @@ LPH_NO_VIRTUALIZE(function()
 					max_distance = 1000,
 					skeleton_rate = 1e-10,
 					gradient_spin = false,
-					gradient_speed = 360, -- degrees per second, formula: tick() % 1 * speed
-					holder_spin = false,
-					holder_speed = 360 -- degrees per second, formula: tick() % 1 * speed
+					gradient_speed = 360 -- degrees per second, formula: tick() % 1 * speed
 				},
 
 				enabled = false,
@@ -5732,6 +6223,12 @@ LPH_NO_VIRTUALIZE(function()
 				weapon = false,
 				skeleton = false,
 				flags = false,
+				
+				arrow = false,
+				arrow_max_dist = 100,
+				arrow_radius = 200,
+				arrow_elements = {},
+				arrow_hp_color = nil, -- nil = авто (красный→зелёный), иначе Color3
 
 				box_color = { Color3.new(1, 1, 1), Color3.new(1, 1, 1), 0 },
 				health_bar_color = { Color3.new(1, 1, 1), Color3.new(1, 1, 1) },
@@ -5745,8 +6242,19 @@ LPH_NO_VIRTUALIZE(function()
 				box_rotation = 0,
 
 				chams = false,
-				chams_color = { Color3.new(1, 1, 1), 0 },
+				highlight = false,
+				highlight_color = { Library.Theme.accent or Color3.new(1, 1, 1), 0 },
+				chams_style = "Glow",
+				chams_color = { Library.Theme.accent or Color3.new(1, 1, 1), 0 },
 				chams_glow_factor = 2
+			},
+			self_chams = {
+				enabled = false,
+				style = "Ocean Gel",
+				color = { Library.Theme.accent or Color3.new(1, 1, 1), 0 },
+				glow_factor = 3,
+				highlight = false,
+				highlight_color = { Library.Theme.accent or Color3.new(1, 1, 1), 0 }
 			}
 		}
 	}
@@ -5853,6 +6361,17 @@ LPH_NO_VIRTUALIZE(function()
 		local plr = loaded_plrs[plr_instance]
 		local obj = plr.obj
 
+		local model_highlight = esp.create_obj("Highlight", {
+			Parent = container,
+			Enabled = false,
+			Adornee = nil,
+			FillTransparency = 1,
+			OutlineTransparency = 0,
+			OutlineColor = Color3.new(0, 0, 0),
+			FillColor = Color3.new(0, 0, 0),
+			DepthMode = Enum.HighlightDepthMode.AlwaysOnTop,
+		}, obj)
+
 		local main_holder = esp.create_obj("Frame", {
 			Parent = container,
 			ZIndex = 2,
@@ -5862,6 +6381,131 @@ LPH_NO_VIRTUALIZE(function()
 			BackgroundTransparency = 1,
 			Visible = false
 		}, obj)
+
+		local arrow_holder = esp.create_obj("Frame", {
+			Parent = container,
+			ZIndex = 2,
+			BorderSizePixel = 0,
+			Size = UDim2.new(0, 40, 0, 40),
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromScale(0.5, 0.5),
+			BackgroundTransparency = 1,
+			Visible = false
+		}, obj)
+		-- ===== ARROW ESP layout (matches reference: name above, HP-bar left of arrow, dist below, item under dist) =====
+		local arrow_label = esp.create_obj("TextLabel", {
+			Parent = arrow_holder,
+			BackgroundTransparency = 1,
+			Text = "▽",
+			TextColor3 = Color3.new(1, 1, 1),
+			TextTransparency = 0.15,
+			TextSize = 20,
+			Font = Enum.Font.Code,
+			Size = UDim2.new(1, 0, 1, 0),
+			Position = UDim2.new(0.5, 0, 0.5, 0),
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			TextXAlignment = Enum.TextXAlignment.Center,
+			TextYAlignment = Enum.TextYAlignment.Center,
+			TextStrokeTransparency = 0.4,
+			TextStrokeColor3 = Color3.new(0.6, 0.6, 0.6),
+		}, obj)
+
+		-- Имя НАД стрелкой
+		local arrow_name = esp.create_obj("TextLabel", {
+			Parent = arrow_holder,
+			BackgroundTransparency = 1,
+			Size = UDim2.new(0, 120, 0, 13),
+			AnchorPoint = Vector2.new(0.5, 1),
+			Position = UDim2.new(0.5, 0, 0, -2),
+			FontFace = Fonts.Get("TahomaXP"),
+			TextSize = 12,
+			TextColor3 = Color3.new(1, 1, 1),
+			TextStrokeTransparency = 0,
+			TextXAlignment = Enum.TextXAlignment.Center,
+			Visible = false,
+		}, obj)
+
+		-- HP-бар СЛЕВА от стрелки (вертикальная зелёная полоска как на референсе)
+		-- arrow_box_lbl — внешний фрейм-«рамка»  HP, чтобы существующий код, который
+		-- ссылается на arrow_box_inner.Color, продолжал работать (мы используем его
+		-- как заполняющую полосу HP).
+		local arrow_box_lbl = esp.create_obj("Frame", {
+			Parent = arrow_holder,
+			AnchorPoint = Vector2.new(1, 0.5),       -- правый край прижат к левому боку стрелки
+			Position = UDim2.new(0.5, -11, 0.5, 0), -- вплотную слева от центра holder
+			Size = UDim2.new(0, 2, 0, 16),           -- тонкая вертикальная полоска
+			BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+			BorderSizePixel = 0,
+			Visible = false,
+		}, obj)
+		esp.create_obj("UIStroke", {
+			Parent = arrow_box_lbl,
+			ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+			LineJoinMode = Enum.LineJoinMode.Miter,
+			Thickness = 1,
+			Color = Color3.fromRGB(0, 0, 0),
+			Transparency = 0,
+		}, obj)
+		local arrow_box_inner_frame = esp.create_obj("Frame", {
+			Parent = arrow_box_lbl,
+			AnchorPoint = Vector2.new(0, 1),         -- HP «растёт» снизу вверх
+			Position = UDim2.new(0, 0, 1, 0),
+			Size = UDim2.new(1, 0, 1, 0),
+			BackgroundColor3 = Color3.fromRGB(64, 220, 90), -- зелёный HP
+			BorderSizePixel = 0,
+		}, obj)
+		-- arrow_box_inner оставляем для совместимости со старым кодом (.Color),
+		-- цвет сразу подаём на заливку HP-полоски.
+		local arrow_box_inner = esp.create_obj("UIStroke", {
+			Parent = arrow_box_inner_frame,
+			ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+			LineJoinMode = Enum.LineJoinMode.Miter,
+			Thickness = 0,
+			Color = Color3.fromRGB(64, 220, 90),
+			Transparency = 1,
+		}, obj)
+
+		-- Дистанция ПОД стрелкой
+		local arrow_distance_lbl = esp.create_obj("TextLabel", {
+			Parent = arrow_holder,
+			BackgroundTransparency = 1,
+			Size = UDim2.new(0, 120, 0, 13),
+			AnchorPoint = Vector2.new(0.5, 0),
+			Position = UDim2.new(0.5, 0, 1, 2),
+			FontFace = Fonts.Get("TahomaXP"),
+			TextSize = 12,
+			TextColor3 = Color3.new(1, 1, 1),
+			TextStrokeTransparency = 0,
+			TextXAlignment = Enum.TextXAlignment.Center,
+			Visible = false,
+		}, obj)
+
+		-- Item (Tool) ПОД дистанцией
+		local arrow_item_lbl = esp.create_obj("TextLabel", {
+			Parent = arrow_holder,
+			BackgroundTransparency = 1,
+			Size = UDim2.new(0, 120, 0, 13),
+			AnchorPoint = Vector2.new(0.5, 0),
+			Position = UDim2.new(0.5, 0, 1, 18),
+			FontFace = Fonts.Get("TahomaXP"),
+			TextSize = 12,
+			TextColor3 = Color3.new(1, 1, 1),
+			TextStrokeTransparency = 0,
+			TextXAlignment = Enum.TextXAlignment.Center,
+			Visible = false,
+		}, obj)
+
+		-- arrow_health_lbl: текстовая «[100]» больше не нужна (HP теперь — полоса слева),
+		-- но переменная должна существовать, потому что код фич ниже обращается к ней
+		-- (.Visible / .Text). Делаем скрытый dummy-лейбл.
+		local arrow_health_lbl = esp.create_obj("TextLabel", {
+			Parent = arrow_holder,
+			BackgroundTransparency = 1,
+			Size = UDim2.new(0, 0, 0, 0),
+			Text = "",
+			Visible = false,
+		}, obj)
+		-- ===== /ARROW ESP layout =====
 		local box_holder = esp.create_obj("Frame", {
 			Parent = main_holder,
 			ZIndex = -1,
@@ -6059,12 +6703,137 @@ LPH_NO_VIRTUALIZE(function()
 		local weapon_enabled, box_rotation = settings.weapon, settings.box_rotation
 
 		local gradient_spin, gradient_speed = main_settings.gradient_spin, main_settings.gradient_speed
-		local holder_spin, holder_speed = main_settings.holder_spin, main_settings.holder_speed
 
 		local get_character, get_root, get_humanoid = esp_table.get_character, esp_table.get_root, esp_table.get_humanoid
 		local get_health, get_team, get_gun = esp_table.get_health, esp_table.get_team, esp_table.get_gun
 
 		local setvis_cache, skeleton_tick = false, 0
+
+		local function clampColor(v)
+			return math.clamp(v, 0, 1)
+		end
+
+		local function scaledColor(color, factor)
+			return Color3.new(
+				clampColor(color.R * factor),
+				clampColor(color.G * factor),
+				clampColor(color.B * factor)
+			)
+		end
+
+		local function setChamShading(chamObject, preferred)
+			pcall(function()
+				if preferred == "XRayShaded" then
+					chamObject.Shading = Enum.AdornShading.XRayShaded
+				elseif preferred == "AlwaysOnTop" then
+					local ok = pcall(function() chamObject.Shading = Enum.AdornShading.AlwaysOnTop end)
+					if not ok then chamObject.Shading = Enum.AdornShading.XRayShaded end
+				end
+			end)
+		end
+
+		local function apply_cham_style(chamObject, part)
+			if not chamObject then return end
+			local style = settings.chams_style or "Glow"
+			local base = settings.chams_color[1] or Color3.new(1, 1, 1)
+			local glow = settings.chams_glow_factor or 2
+			local now = tick()
+
+			local color = base
+			local transparency = 0.45
+			local alwaysOnTop = true
+			local zindex = 1
+			local sizeMul = 0.95
+			local shadingMode = "AlwaysOnTop"
+
+			if style == "Glow" then
+				-- старый стиль чамсов, оставлен как Glow
+				color = Color3.new(base.R * glow, base.G * glow, base.B * glow)
+				transparency = -1
+				alwaysOnTop = false
+				zindex = -1
+				sizeMul = 0.95
+				shadingMode = "XRayShaded"
+			elseif style == "Flat" then
+				-- плотный flat: максимально насыщенный цвет, без серого XRay shading
+				color = base
+				transparency = 0
+				alwaysOnTop = true
+				zindex = 5
+				sizeMul = 1
+			elseif style == "ForceField" then
+				-- ForceField-style shimmer: мягкая пульсация цвета/прозрачности/размера,
+				-- чтобы выглядело как живая forcefield-оболочка, а не статичный flat cham.
+				local offset = part and (#part.Name * 0.37 + part.Position.Magnitude * 0.015) or 0
+				local wave = (math.sin(now * 4.2 + offset) + 1) * 0.5
+				local wave2 = (math.sin(now * 7.4 + offset * 1.7) + 1) * 0.5
+
+				color = scaledColor(base, 1.35 + wave * 0.65)
+				transparency = 0.08 + wave2 * 0.18
+				alwaysOnTop = true
+				zindex = 6
+				sizeMul = 1.015 + wave * 0.025
+			elseif style == "Glass" then
+				color = scaledColor(base, 1.45)
+				transparency = 0.38
+				alwaysOnTop = true
+				zindex = 5
+				sizeMul = 1.02
+		elseif style == "Pulse" then
+			material = Enum.Material.Neon
+			local wave = (math.sin(now * 1.0) + 1) * 0.5
+			local pulse = 1.0 + (1 - wave) * 0.35
+			color = Color3.new(
+				math.clamp(base_color.R * pulse, 0, 1),
+				math.clamp(base_color.G * pulse, 0, 1),
+				math.clamp(base_color.B * pulse, 0, 1)
+			)
+			target_transparency = 0.08 + wave * 0.82
+			texture_id = ""
+elseif style == "Rainbow" then
+				color = Color3.fromHSV((now * 0.12) % 1, 0.75, 1)
+				transparency = 0.28
+				alwaysOnTop = true
+				zindex = 3
+				sizeMul = 1
+			end
+
+			chamObject.Color3 = color
+			chamObject.Transparency = transparency
+			chamObject.AlwaysOnTop = alwaysOnTop
+			chamObject.ZIndex = zindex
+			if part then chamObject.Size = part.Size * sizeMul end
+			setChamShading(chamObject, shadingMode)
+		end
+
+		local function apply_highlight_style(outlineObject, part, visible)
+			-- Per-part SelectionBox outline disabled: it was too thin and got hidden by Flat chams.
+			-- We now use only one saturated Roblox Highlight around the whole character.
+			if outlineObject then
+				outlineObject.Adornee = nil
+			end
+		end
+
+		local function apply_model_highlight(highlightObject, characterObject, visible)
+			if not highlightObject then return end
+			local enabled = visible and settings.highlight and characterObject ~= nil
+			highlightObject.Enabled = enabled
+			highlightObject.Adornee = enabled and characterObject or nil
+			if not enabled then return end
+
+			local color = settings.highlight_color[1] or Library.Theme.accent or Color3.new(1, 1, 1)
+			local alpha = settings.highlight_color[2] or 0
+			-- Boost color so the outline stays visible even over saturated/flat chams.
+			local outlineColor = scaledColor(color, 2.25)
+
+			pcall(function()
+				highlightObject.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+			end)
+			highlightObject.OutlineColor = outlineColor
+			highlightObject.OutlineTransparency = math.clamp(alpha * 0.35, 0, 0.2)
+			highlightObject.FillColor = outlineColor
+			highlightObject.FillTransparency = 1
+		end
 
 		function plr:forceupdate()
 			team_check, dead_check, dist_check = main_settings.team_check, main_settings.dead_check, main_settings.dist_check
@@ -6073,7 +6842,6 @@ LPH_NO_VIRTUALIZE(function()
 			weapon_enabled, box_rotation = settings.weapon, settings.box_rotation
 
 			gradient_spin, gradient_speed = main_settings.gradient_spin, main_settings.gradient_speed
-			holder_spin, holder_speed = main_settings.holder_spin, main_settings.holder_speed
 
 			main_box.Enabled = settings.box
 			main_box_outline_1.Enabled = settings.box
@@ -6121,13 +6889,13 @@ LPH_NO_VIRTUALIZE(function()
 				flag.TextTransparency = settings.flags_color[2]
 			end
 
+			apply_model_highlight(model_highlight, character, setvis_cache)
 			for part, cham in chams_table do
-				cham.cham.Adornee = setvis_cache and settings.chams and part or nil
-				cham.cham.Color3 = Color3.new(
-					settings.chams_color[1].R * settings.chams_glow_factor,
-					settings.chams_color[1].G * settings.chams_glow_factor,
-					settings.chams_color[1].B * settings.chams_glow_factor
-				)
+				local visible = setvis_cache
+				cham.outline.Adornee = nil
+				cham.cham.Adornee = visible and settings.chams and part or nil
+				apply_highlight_style(cham.outline, part, visible)
+				apply_cham_style(cham.cham, part)
 			end
 		end
 
@@ -6136,6 +6904,7 @@ LPH_NO_VIRTUALIZE(function()
 				return --print("???????", part)
 			end
 			chams_table[part].connection:Disconnect()
+			if chams_table[part].outline then chams_table[part].outline:Destroy() end
 			chams_table[part].cham:Destroy()
 			chams_table[part] = nil
 		end
@@ -6144,26 +6913,35 @@ LPH_NO_VIRTUALIZE(function()
 			if not (_IsA(part, "BasePart") and isBodyPart(part.Name)) then return end
 			if chams_table[part] then destroy_cham_object(part) end
 			--print("hi", part)
+			local outline = esp.create_obj("SelectionBox", {
+				Parent = container,
+				Adornee = nil,
+				Color3 = settings.highlight_color[1],
+				SurfaceColor3 = settings.highlight_color[1],
+				SurfaceTransparency = 1,
+				LineThickness = 0
+			}, obj)
+			apply_highlight_style(outline, part, setvis_cache)
+
 			local cham = esp.create_obj("BoxHandleAdornment", {
 				Parent = container,
 				Size = part.Size * .95,
 				Adornee = setvis_cache and settings.chams and part or nil,
-				Color3 = Color3.new(
-					settings.chams_color[1].R * settings.chams_glow_factor,
-					settings.chams_color[1].G * settings.chams_glow_factor,
-					settings.chams_color[1].B * settings.chams_glow_factor
-				),
-				Transparency = -1,
+				Color3 = settings.chams_color[1],
+				Transparency = 0.45,
 				Shading = Enum.AdornShading.XRayShaded,
-				ZIndex = -1,
-				AlwaysOnTop = false
+				ZIndex = 1,
+				AlwaysOnTop = true
 			}, obj)
+			apply_cham_style(cham, part)
 
 			chams_table[part] = {
 				cham = cham,
+				outline = outline,
 				connection = part:GetPropertyChangedSignal("Size"):Connect(function()
 					if not (cham and part) then return print("MEMORY LEAK!!!!!!", cham, part) end
-					cham.Size = part.Size * .95
+					apply_highlight_style(outline, part, setvis_cache)
+					apply_cham_style(cham, part)
 				end)
 			}
 		end
@@ -6173,8 +6951,15 @@ LPH_NO_VIRTUALIZE(function()
 			setvis_cache = bool
 
 			main_holder.Visible = bool
+			if not bool then
+				arrow_holder.Visible = false
+			end
+			apply_model_highlight(model_highlight, character, bool)
 			for part, cham in chams_table do
-				cham.cham.Adornee = bool and settings.chams and part or nil
+				local visible = bool
+				cham.outline.Adornee = nil
+				cham.cham.Adornee = visible and settings.chams and part or nil
+				apply_highlight_style(cham.outline, part, visible)
 			end
 		end
 
@@ -6213,6 +6998,13 @@ LPH_NO_VIRTUALIZE(function()
 				return plr:togglevis(false)
 			end
 
+			if (settings.chams and (settings.chams_style == "Pulse" or settings.chams_style == "Rainbow" or settings.chams_style == "ForceField")) or settings.highlight then
+				for part, cham in chams_table do
+					apply_highlight_style(cham.outline, part, setvis_cache)
+					apply_cham_style(cham.cham, part)
+				end
+			end
+
 			character = get_character(plr_instance)
 
 			if not (character) then
@@ -6225,10 +7017,12 @@ LPH_NO_VIRTUALIZE(function()
 			if not (root) then
 				return plr:togglevis(false)
 			end
+
+			apply_model_highlight(model_highlight, character, true)
 			
 			local humanoid_health, humanoid_max_health
 			if humanoid then 
-				humanoid_health, humanoid_max_health = get_health(plr_instance, character, humanoid)
+				humanoid_health, humanoid_max_health = humanoid.Health, humanoid.MaxHealth
 			end
 
 			local humanoid_distance = (Camera.CFrame.Position - root.Position).Magnitude
@@ -6248,20 +7042,132 @@ LPH_NO_VIRTUALIZE(function()
 			local _, onScreen = _WorldToViewportPoint(Camera, root.Position)
 
 			if not onScreen then
-				return plr:togglevis(false)
+				if settings.arrow and humanoid_distance <= settings.arrow_max_dist then
+					main_holder.Visible = false
+					apply_model_highlight(model_highlight, nil, false)
+					for part, cham in chams_table do
+						cham.cham.Adornee = nil
+						if cham.outline then cham.outline.Adornee = nil end
+					end
+					setvis_cache = nil -- reset cache to allow normal togglevis later
+					arrow_holder.Visible = true
+
+					-- ===== ARROW ESP (compass) =====
+					-- Стрелка размещается на круге вокруг центра экрана в направлении
+					-- врага И поворачивается в ту же сторону (как компас/указатель).
+					-- Символ "▼" по умолчанию смотрит вниз (=180°), поэтому компенсируем +180°.
+					local camCFrame = Camera.CFrame
+					local objSpace  = camCFrame:PointToObjectSpace(root.Position)
+
+					-- angle: 0 = впереди, +pi/2 = справа, ±pi = сзади, -pi/2 = слева
+					local angle = math.atan2(objSpace.X, -objSpace.Z)
+
+					local screenCenter = Camera.ViewportSize / 2
+					local radius = settings.arrow_radius
+					local x = screenCenter.X + math.sin(angle) * radius
+					local y = screenCenter.Y - math.cos(angle) * radius
+
+					arrow_holder.Position = UDim2.new(0, x, 0, y - gui_inset.Y)
+					arrow_label.Rotation = math.deg(angle) + 180
+					-- ===== /ARROW ESP =====
+					
+					local elems = settings.arrow_elements
+					local show_name   = table.find(elems, "name")
+					local show_health = table.find(elems, "health")
+					local show_dist   = table.find(elems, "distance")
+					local show_box    = table.find(elems, "box")
+					local show_item   = table.find(elems, "item")
+
+					-- Имя сверху
+					arrow_name.Visible = show_name ~= nil
+					if arrow_name.Visible then arrow_name.Text = plr_instance.Name end
+
+					-- Дистанция под стрелкой
+					arrow_distance_lbl.Visible = show_dist ~= nil
+					if arrow_distance_lbl.Visible then
+						arrow_distance_lbl.Text = math.floor(humanoid_distance) .. "m"
+					end
+
+					-- HP — это вертикальная зелёная полоса СЛЕВА от стрелки
+					-- (флаги "health" и "box" оба её показывают — как на референсе)
+					local show_bar = (show_health ~= nil) or (show_box ~= nil)
+					arrow_box_lbl.Visible = show_bar
+					if show_bar and humanoid then
+						local hp_ratio = math.clamp(humanoid_health / math.max(humanoid_max_health, 1), 0, 1)
+						arrow_box_inner_frame.Size = UDim2.new(1, 0, hp_ratio, 0)
+						-- цвет HP: пользовательский или авто (красный→зелёный)
+						if settings.arrow_hp_color then
+							arrow_box_inner_frame.BackgroundColor3 = settings.arrow_hp_color
+						else
+							arrow_box_inner_frame.BackgroundColor3 =
+								Color3.fromRGB(math.floor(255 * (1 - hp_ratio)),
+								               math.floor(220 * hp_ratio),
+								               0)
+						end
+					end
+
+					-- Скрытый текстовый health (для совместимости)
+					arrow_health_lbl.Visible = false
+
+					-- Item (Tool) — под дистанцией
+					arrow_item_lbl.Visible = show_item ~= nil
+					if arrow_item_lbl.Visible then
+						local tool = character:FindFirstChildOfClass("Tool")
+						arrow_item_lbl.Text = tool and ("[" .. tool.Name .. "]") or ""
+						arrow_item_lbl.Visible = tool ~= nil
+						-- если дистанция скрыта, поднимаем item на её место
+						arrow_item_lbl.Position = arrow_distance_lbl.Visible
+							and UDim2.new(0.5, 0, 1, 18)
+							or  UDim2.new(0.5, 0, 1, 2)
+					end
+					return
+				else
+					return plr:togglevis(false)
+				end
+			else
+				arrow_holder.Visible = false
 			end
 
-			local corners, cache = {}, {}
-			do
+			-- Обновляем кеш частей тела только если персонаж сменился
+			if plr._cached_char ~= character then
+				plr._cached_char = character
+				plr._cached_parts = {}
 				local count = 0
 				for _, part in character:GetChildren() do
 					if _IsA(part, "BasePart") and isBodyPart(part.Name) then
-						cache[part.Name] = {part.CFrame, part.Size}
+						plr._cached_parts[part.Name] = part
 						count += 1
 					end
 				end
-				if count <= 0 then
+				plr._cached_parts_count = count
+				if plr._char_child_conn then plr._char_child_conn:Disconnect() end
+				if plr._char_rem_conn   then plr._char_rem_conn:Disconnect()   end
+				plr._char_child_conn = character.ChildAdded:Connect(function(p)
+					if _IsA(p, "BasePart") and isBodyPart(p.Name) then
+						plr._cached_parts[p.Name] = p
+						plr._cached_parts_count = (plr._cached_parts_count or 0) + 1
+					end
+				end)
+				plr._char_rem_conn = character.ChildRemoved:Connect(function(p)
+					if plr._cached_parts[p.Name] then
+						plr._cached_parts[p.Name] = nil
+						plr._cached_parts_count = math.max(0, (plr._cached_parts_count or 1) - 1)
+					end
+				end)
+			end
+
+			local corners
+			do
+				if (plr._cached_parts_count or 0) <= 0 then
 					return plr:togglevis(false)
+				end
+				-- Переиспользуем таблицу кеша вместо создания новой каждый кадр
+				local cache = plr._bbox_cache or {}
+				plr._bbox_cache = cache
+				-- очищаем только изменённые ключи
+				for k in cache do cache[k] = nil end
+				for name, part in plr._cached_parts do
+					cache[name] = {part.CFrame, part.Size}
 				end
 				corners = calculateCorners(getBoundingBox(cache))
 			end
@@ -6269,7 +7175,7 @@ LPH_NO_VIRTUALIZE(function()
 			plr:togglevis(true)
 
 			do
-				main_holder.Rotation = holder_spin and tick() * holder_speed % 360 or 0
+				main_holder.Rotation = 0
 				main_box_color.Rotation = box_rotation + (gradient_spin and tick() * gradient_speed % 360 or 0)
 			end
 
@@ -6375,6 +7281,13 @@ LPH_NO_VIRTUALIZE(function()
 		esp_table.playerAdded:Disconnect()
 		esp_table.playerRemoving:Disconnect()
 
+		if esp_table.settings.self_chams then
+			esp_table.settings.self_chams.enabled = false
+			pcall(function()
+				esp_table.update_self_chams()
+			end)
+		end
+
 		esp_table.__loaded = false;
 	end
 
@@ -6412,7 +7325,357 @@ LPH_NO_VIRTUALIZE(function()
 		end
 	end
 
-	function esp_table.register_flag(flag, func)
+	local original_properties = setmetatable({}, {__mode = "k"})
+	local clothing_cache = setmetatable({}, {__mode = "k"})
+
+	local function isBodyPart(part)
+		local name = part.Name
+		if name == "HumanoidRootPart" then return false end
+		if part:FindFirstAncestorOfClass("Tool") then return false end
+		
+		-- Ignore weapons/viewmodels/arms folders
+		local parent = part.Parent
+		while parent and parent ~= workspace do
+			local p_name = parent.Name:lower()
+			if p_name:find("weapon") or p_name:find("viewmodel") or p_name:find("arms") then
+				return false
+			end
+			parent = parent.Parent
+		end
+		
+		return true
+	end
+
+	local function hide_clothing(character)
+		for _, child in character:GetChildren() do
+			if child:IsA("Shirt") and child.ShirtTemplate ~= "" then
+				clothing_cache[child] = { Property = "ShirtTemplate", Value = child.ShirtTemplate }
+				child.ShirtTemplate = ""
+			elseif child:IsA("Pants") and child.PantsTemplate ~= "" then
+				clothing_cache[child] = { Property = "PantsTemplate", Value = child.PantsTemplate }
+				child.PantsTemplate = ""
+			elseif child:IsA("ShirtGraphic") and child.Graphic ~= "" then
+				clothing_cache[child] = { Property = "Graphic", Value = child.Graphic }
+				child.Graphic = ""
+			end
+		end
+	end
+
+	local function restore_clothing()
+		for obj, cache in pairs(clothing_cache) do
+			if obj and obj.Parent then
+				pcall(function()
+					obj[cache.Property] = cache.Value
+				end)
+			end
+		end
+		table.clear(clothing_cache)
+	end
+
+	local function restore_part(part)
+		if not part then return end
+		local props = original_properties[part]
+		if props then
+			pcall(function()
+				part.Material = props.Material
+				part.Color = props.Color
+				part.Transparency = props.Transparency
+				part.Reflectance = props.Reflectance
+				if part:IsA("MeshPart") and props.MeshPartTextureID then
+					part.TextureID = props.MeshPartTextureID
+				end
+				for mesh, mesh_props in pairs(props.SpecialMeshes or {}) do
+					if mesh and mesh.Parent then
+						mesh.TextureId = mesh_props.TextureId
+						mesh.VertexColor = mesh_props.VertexColor
+					end
+				end
+				for decal, tex_id in pairs(props.Decals or {}) do
+					if decal and decal.Parent then
+						decal.Texture = tex_id
+					end
+				end
+			end)
+			original_properties[part] = nil
+		end
+		for _, child in part:GetChildren() do
+			if child.Name == "SelfChamTexture" or child.Name == "SelfChamOutline" then
+				child:Destroy()
+			end
+		end
+	end
+
+						local function apply_self_cham_to_part(part, style, base_color, transparency, glow)
+		if not (part and part:IsA("BasePart") and isBodyPart(part)) then return end
+
+		-- Destroy any leftover forcefield overlays from the previous step
+		local overlay = part:FindFirstChild("SelfChamOverlay")
+		if overlay then
+			overlay:Destroy()
+		end
+
+		if not original_properties[part] then
+			original_properties[part] = {
+				Material = part.Material,
+				Color = part.Color,
+				Transparency = part.Transparency,
+				Reflectance = part.Reflectance,
+				MeshPartTextureID = part:IsA("MeshPart") and part.TextureID or nil,
+				SpecialMeshes = {},
+				Decals = {}
+			}
+			for _, child in part:GetChildren() do
+				if child:IsA("SpecialMesh") then
+					original_properties[part].SpecialMeshes[child] = {
+						TextureId = child.TextureId,
+						VertexColor = child.VertexColor
+					}
+				elseif child:IsA("Decal") then
+					original_properties[part].Decals[child] = child.Texture
+				end
+			end
+		end
+
+		local now = tick()
+		local color = base_color
+		local target_transparency = transparency
+		local reflectance = 0
+		local material = Enum.Material.SmoothPlastic
+		local texture_id = "rbxassetid://9883582451" -- Default to fully transparent texture to clear default skins
+
+		if style == "Ocean Gel" then
+			-- Highly reflective semi-transparent Glass material with no 2D textures to allow 100% pure, perfect color rendering and refraction!
+			material = Enum.Material.Glass
+			reflectance = 0.5
+			color = base_color
+			target_transparency = 0.5
+			texture_id = "" -- Keep empty to prevent grey head and ensure perfect glass coloring matching the body!
+		elseif style == "Glow" then
+			material = Enum.Material.Neon
+			color = base_color
+			target_transparency = 0
+			texture_id = ""
+		elseif style == "Flat" then
+			material = Enum.Material.SmoothPlastic
+			color = base_color
+			target_transparency = 0
+			texture_id = ""
+		elseif style == "ForceField" then
+			material = Enum.Material.ForceField
+			color = base_color
+			target_transparency = transparency
+			local props = original_properties[part]
+			if props then
+				if props.MeshPartTextureID and props.MeshPartTextureID ~= "" then
+					texture_id = props.MeshPartTextureID
+				else
+					texture_id = "rbxassetid://9883582451"
+				end
+			else
+				texture_id = "rbxassetid://9883582451"
+			end
+		elseif style == "Glass" then
+			material = Enum.Material.Glass
+			color = base_color
+			target_transparency = 0.38
+			reflectance = 0.5
+			texture_id = ""
+		elseif style == "Pulse" then
+			material = Enum.Material.Neon
+			local wave = (math.sin(now * 1.0) + 1) * 0.5
+			local pulse = 1.0 + (1 - wave) * 0.35
+			color = Color3.new(
+				math.clamp(base_color.R * pulse, 0, 1),
+				math.clamp(base_color.G * pulse, 0, 1),
+				math.clamp(base_color.B * pulse, 0, 1)
+			)
+			target_transparency = 0.08 + wave * 0.82
+			texture_id = ""
+		elseif style == "Rainbow" then
+			material = Enum.Material.Neon
+			color = Color3.fromHSV((now * 0.03) % 1, 0.75, 1)
+			target_transparency = 0.28
+			texture_id = ""
+		end
+
+		pcall(function()
+			part.Material = material
+			part.Color = color
+			part.Transparency = target_transparency
+			part.Reflectance = reflectance
+		end)
+
+		-- Hide standard face decals
+		for _, child in part:GetChildren() do
+			if child:IsA("Decal") then
+				pcall(function() child.Texture = "" end)
+			end
+		end
+
+		-- Apply transparent texture (or custom forcefield) to meshes
+		local has_mesh = part:IsA("MeshPart")
+		local special_mesh = nil
+		for _, child in part:GetChildren() do
+			if child:IsA("SpecialMesh") then
+				has_mesh = true
+				special_mesh = child
+				break
+			end
+		end
+
+		if has_mesh then
+			if part:IsA("MeshPart") then
+				pcall(function() part.TextureID = texture_id end)
+			end
+			if special_mesh then
+				local spec_tex = (style == "Ocean Gel") and "" or texture_id
+				if style == "ForceField" then
+					spec_tex = "rbxassetid://9883582451"
+					local props = original_properties[part]
+					if props and props.SpecialMeshes and props.SpecialMeshes[special_mesh] and props.SpecialMeshes[special_mesh].TextureId ~= "" then
+						spec_tex = props.SpecialMeshes[special_mesh].TextureId
+					end
+				end
+				pcall(function() special_mesh.TextureId = spec_tex end)
+				-- Apply custom vertex color to special mesh so it colors exactly matching the body part (prevents grey head!)
+				pcall(function()
+					special_mesh.VertexColor = Vector3.new(color.R, color.G, color.B)
+				end)
+			end
+		end
+
+		-- Handle 6-sided textures for non-mesh blocks in Forcefield only
+		local use_6_sided = (style == "ForceField" and not has_mesh)
+		if not use_6_sided then
+			for _, child in part:GetChildren() do
+				if child.Name == "SelfChamTexture" or child.Name == "SelfChamOutline" then
+					child:Destroy()
+				end
+			end
+		else
+			local existing_textures = {}
+			for _, child in part:GetChildren() do
+				if child.Name == "SelfChamTexture" and child:IsA("Texture") then
+					existing_textures[child.Face] = child
+				end
+			end
+
+			local faces = {
+				Enum.NormalId.Front,
+				Enum.NormalId.Back,
+				Enum.NormalId.Left,
+				Enum.NormalId.Right,
+				Enum.NormalId.Top,
+				Enum.NormalId.Bottom
+			}
+
+			for _, face in faces do
+				local tex = existing_textures[face]
+				if not tex then
+					tex = Instance.new("Texture")
+					tex.Name = "SelfChamTexture"
+					tex.Face = face
+					tex.Parent = part
+				end
+				tex.Texture = texture_id
+				tex.Color3 = color
+				tex.Transparency = target_transparency
+				tex.StudsPerTileU = 2
+				tex.StudsPerTileV = 2
+				tex.OffsetStudsU = (now * 0.5) % 2
+				tex.OffsetStudsV = (now * 0.5) % 2
+			end
+		end
+	end
+
+	local function apply_self_cham_highlight(character, color, trans)
+		if not character then return end
+		local highlight = character:FindFirstChild("SelfChamHighlight")
+		if not highlight then
+			highlight = Instance.new("Highlight")
+			highlight.Name = "SelfChamHighlight"
+			highlight.Parent = character
+		end
+		highlight.Adornee = character
+		highlight.FillTransparency = 1
+		highlight.OutlineColor = color
+		highlight.OutlineTransparency = trans or 0.4 -- A beautiful, subtle, small outline!
+		highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+	end
+
+	local function remove_self_cham_highlight(character)
+		if not character then return end
+		local highlight = character:FindFirstChild("SelfChamHighlight")
+		if highlight then
+			highlight:Destroy()
+		end
+	end
+
+	function esp_table.update_self_chams()
+		local self_chams = esp_table.settings.self_chams
+		local character = lplr.Character
+
+		-- Determine if we should show the Highlight on the local player character
+		local show_highlight = self_chams.highlight or (self_chams.enabled and self_chams.style == "Ocean Gel")
+		local highlight_color = Color3.new(1, 1, 1)
+		local highlight_trans = 0.45
+
+		if self_chams.highlight then
+			-- Use chosen custom Self highlight color and transparency
+			highlight_color = self_chams.highlight_color[1] or Color3.fromRGB(0, 102, 255)
+			highlight_trans = self_chams.highlight_color[2] or 0.1
+		elseif self_chams.enabled and self_chams.style == "Ocean Gel" then
+			-- Default bold outline for Ocean Gel style
+			highlight_color = self_chams.color[1]
+			highlight_trans = 0.02
+		end
+
+		if show_highlight and character then
+			apply_self_cham_highlight(character, highlight_color, highlight_trans)
+		else
+			remove_self_cham_highlight(character)
+		end
+
+		if not (self_chams and self_chams.enabled and character) then
+			restore_clothing()
+			if character then
+				for _, child in character:GetDescendants() do
+					if child:IsA("BasePart") then
+						restore_part(child)
+					end
+				end
+			end
+			return
+		end
+
+		hide_clothing(character)
+
+		for _, child in character:GetDescendants() do
+			if child:IsA("BasePart") then
+				apply_self_cham_to_part(
+					child,
+					self_chams.style,
+					self_chams.color[1],
+					self_chams.color[2],
+					self_chams.glow_factor
+				)
+			end
+		end
+	end
+
+	-- rate-limit update_self_chams — достаточно 20 раз/сек
+	local _self_chams_acc = 0
+	cheat.utility.new_renderstepped(function(delta)
+		if esp_table.__loaded then
+			_self_chams_acc = _self_chams_acc + delta
+			if _self_chams_acc >= 0.05 then
+				_self_chams_acc = 0
+				pcall(esp_table.update_self_chams)
+			end
+		end
+	end)
+
+		function esp_table.register_flag(flag, func)
 		assert(not esp_table.__loaded, "[ESP] tried adding flag after loading, add before loading")
 		local registered_flags = esp_table.registered_flags
 		registered_flags[#registered_flags + 1] = {flag, func}
@@ -6448,7 +7711,7 @@ LPH_NO_VIRTUALIZE(function()
 		}
 
 		indicator.drawing = cheat.utility.new_drawing("Text", { Visible = false })
-		indicator.text = `indicator {tostring(indicator)}`
+		indicator.text = "indicator " .. tostring(indicator)
 
 		indicatorlib.indicators[indicator] = indicator
 
@@ -6525,8 +7788,8 @@ end)();
 -- ---- UI definitions + ALL FEATURE LOGIC (unchanged) ----
 local ui = {
 	window = Library:Window({
-		namestart = "swim",
-		nameend = "hub"
+		namestart = "frost",
+		nameend = ".vip"
 	})
 }
 
@@ -6549,19 +7812,22 @@ ui.subtabs = {
 }
 ui.sections = {
 	aimbot_main = ui.subtabs.combat_aimbot:Section({Name = "Aimbot", Side = "Left"}),
-	aimbot_checks = ui.subtabs.combat_aimbot:Section({Name = "Checks", Side = "Right"}),
 	gunmods = ui.subtabs.combat_aimbot:Section({Name = "Gun Modifications", Side = "Right"}),
 	--aimbot_silent = ui.subtabs.combat_aimbot:Section({Name = "Silent", Side = "Right"}),
 	hit_detection = ui.subtabs.combat_visuals:Section({Name = "Hit detection", Side = "Left"}),
+	target_info  = ui.subtabs.combat_visuals:Section({Name = "Target Info",   Side = "Left"}),
+	hitmarkers   = ui.subtabs.combat_visuals:Section({Name = "Hitmarkers",    Side = "Right"}),
 
 	player_esp = ui.subtabs.visuals_esp:Section({Name = "Players", Side = "Left"}),
 	esp_settings = ui.subtabs.visuals_esp:Section({Name = "Settings", Side = "Right"}),
+	-- esp_preview убран из секций меню — теперь это отдельное плавающее окно
 	world_main_changer = ui.subtabs.visuals_lighting:Section({Name = "Lighting", Side = "Left"}),
 	world_misc_changer = ui.subtabs.visuals_lighting:Section({Name = "Misc", Side = "Right"}),
-	visuals_misc = ui.subtabs.visuals_misc:Section({Name = "View", Side = "Left"}),
+	visuals_misc = ui.subtabs.misc_main:Section({Name = "View", Side = "Left"}),
 
 	movement = ui.subtabs.misc_main:Section({Name = "Movement", Side = "Left"}),
 	misc = ui.subtabs.misc_main:Section({Name = "Misc", Side = "Right"}),
+	crosshair = ui.subtabs.misc_main:Section({Name = "Crosshair", Side = "Right"}),
 	custom_desync = ui.subtabs.misc_exploit:Section({Name = "Custom desync", Side = "Left"}),
 	exploit = ui.subtabs.misc_exploit:Section({Name = "Exploit", Side = "Right"}),
 
@@ -6707,13 +7973,27 @@ do
 	local get_character, get_root, get_humanoid = esp_table.get_character, esp_table.get_root, esp_table.get_humanoid
 	local get_health, get_team, get_gun = esp_table.get_health, esp_table.get_team, esp_table.get_gun
 
+	-- кеш массива игроков для get_closest_target (избегаем Players:GetPlayers() каждый кадр)
+	local _cached_players = {}
+	for _, p in Players:GetPlayers() do
+		if p ~= LocalPlayer then table.insert(_cached_players, p) end
+	end
+	Players.PlayerAdded:Connect(function(p)
+		if p ~= LocalPlayer then table.insert(_cached_players, p) end
+	end)
+	Players.PlayerRemoving:Connect(function(p)
+		for i = #_cached_players, 1, -1 do
+			if _cached_players[i] == p then table.remove(_cached_players, i); break end
+		end
+	end)
+
 	local add_player = function(player)
 		local character, humanoid
 		local old_health
 		player_list[player] = {
 			premium = player.MembershipType == Enum.MembershipType.Premium,
 			friend = player:IsFriendsWith(LocalPlayer.UserId),
-			update_loop = cheat.utility.new_renderstepped(LPH_NO_VIRTUALIZE(function(delta)
+			update_loop = cheat.utility.new_heartbeat(LPH_NO_VIRTUALIZE(function(delta)
 				character = get_character(player)
 				if not character then return end
 				humanoid = _FindFirstChildOfClass(character, "Humanoid")
@@ -6765,9 +8045,11 @@ do
 		local maximum_distance = fov_size
 		local mousepos = UserInputService:GetMouseLocation()
 		local campos = Camera.CFrame.Position
+		-- Players:GetPlayers() аллоцирует таблицу каждый вызов — берём из кеша
+		local playerList = _cached_players
 		
 		LPH_NO_VIRTUALIZE(function()
-			for _, player in Players:GetPlayers() do
+			for _, player in playerList do
 				if not (player and player ~= LocalPlayer) then continue end
 
 				local character = get_character(player)
@@ -6788,7 +8070,7 @@ do
 
 				local health, max_health
 				if humanoid then
-					health, max_health = health, max_health
+					health, max_health = get_health(player, character, humanoid)
 				end
 
 				if not (mainpart) then continue end
@@ -6821,26 +8103,246 @@ end
 
 local aimbot_mode
 local target_part, target_player, target_collider
+local last_target_player, last_target_part, last_target_position, last_target_tick = nil, nil, nil, 0
 local silent_mode, silent_projectionoverride, silent_wallbang, silent_magicbullet = "None", false, false, false
+
+-- ── Manipulation (wallbang origin solver) ────────────────────
+local Manipulation = (function()
+	local M = {}
+	local WS  = game:GetService("Workspace")
+	local Cam = WS.CurrentCamera
+	local LP  = game:GetService("Players").LocalPlayer
+
+	-- ВАЖНО: сохраняем rawget Raycast ДО хука __namecall
+	-- чтобы вызовы внутри Manipulation не уходили в хук и не создавали рекурсию
+	local rawRaycast = WS.Raycast  -- сохраняем метод как функцию
+
+	local _rp = RaycastParams.new()
+	_rp.FilterType  = Enum.RaycastFilterType.Exclude
+	_rp.IgnoreWater = true
+
+	local DIRS = {
+		Vector3.new( 0, 1, 0), Vector3.new( 0,-1, 0),
+		Vector3.new( 0, 0, 1), Vector3.new( 0, 0,-1),
+		Vector3.new( 1, 0, 0), Vector3.new(-1, 0, 0),
+		Vector3.new( 1, 1, 1).Unit,  Vector3.new(-1, 1, 1).Unit,
+		Vector3.new( 1, 1,-1).Unit,  Vector3.new(-1, 1,-1).Unit,
+		Vector3.new( 1,-1, 1).Unit,  Vector3.new(-1,-1, 1).Unit,
+		Vector3.new( 1,-1,-1).Unit,  Vector3.new(-1,-1,-1).Unit,
+	}
+
+	local function isInChar(inst, char)
+		local c = inst
+		while c do
+			if c == char then return true end
+			c = c.Parent
+		end
+		return false
+	end
+
+	local function hasLOS(origin, targetPos, targetPart)
+		local lc = LP.Character
+		local tc = targetPart and targetPart.Parent
+		local filter = {}
+		if lc then filter[#filter+1] = lc end
+		if tc then filter[#filter+1] = tc end
+		_rp.FilterDescendantsInstances = filter
+		local dir = targetPos - origin
+		-- Вызываем rawRaycast напрямую — обходит __namecall хук
+		local ok, result = pcall(rawRaycast, WS, origin, dir, _rp)
+		if not ok or not result then return true end
+		if targetPart and isInChar(result.Instance, tc) then return true end
+		return false
+	end
+
+	function M.SolveOrigin(targetPart, maxOffset, steps)
+		if not targetPart or not targetPart.Parent then return nil end
+		maxOffset = maxOffset or 12
+		steps     = steps     or 24
+		local targetPos = targetPart.Position
+		if hasLOS(Cam.CFrame.Position, targetPos, targetPart) then
+			return Cam.CFrame.Position
+		end
+		local half = targetPart.Size.Magnitude / 2
+		local maxO = math.max(maxOffset, half + 2)
+		for _, dir in ipairs(DIRS) do
+			for i = 1, steps do
+				local t = i / steps
+				local testO = targetPos + dir * (half + t * maxO)
+				if hasLOS(testO, targetPos, targetPart) then
+					return testO
+				end
+			end
+		end
+		return (targetPart.CFrame * CFrame.new(0, targetPart.Size.Y + 2, 0)).Position
+	end
+
+	function M.ManipulateRay(origin, direction, targetPart)
+		if not targetPart or not targetPart.Parent then
+			return origin, direction, false
+		end
+		local newOrigin = M.SolveOrigin(targetPart)
+		if not newOrigin then return origin, direction, false end
+		local newDir = targetPart.Position - newOrigin
+		local origLen = direction.Magnitude
+		if origLen > 0 then newDir = newDir.Unit * origLen end
+		return newOrigin, newDir, true
+	end
+
+	return M
+end)()
 local silent_methods = {
-	["Raycast"] = false,
+	["Raycast"]                    = false,
 	["FindPartOnRayWithWhitelist"] = false,
-	["FindPartOnRayWithIgnoreList"] = false,
-	["FindPartOnRay"] = false,
-	["ScreenPointToRay"] = false,
-	["ViewportPointToRay"] = false
+	["FindPartOnRayWithIgnoreList"]= false,
+	["FindPartOnRay"]              = false,
+	["ScreenPointToRay"]           = false,
+	["ViewportPointToRay"]         = false,
+	["Mouse"]                      = false,  -- Mouse.Hit / Mouse.Target
+	["Ray"]                        = false,  -- устаревший Ray API
+	["Camera"]                     = false,  -- Camera.CoordinateFrame спуфинг
 }
+
+-- =====================================================================
+-- АВТО-ДЕТЕКТОР МЕТОДОВ СТРЕЛЬБЫ
+-- При выборе "Auto" скрипт на 4 секунды слушает какие методы вызывает
+-- игра при стрельбе и автоматически включает только нужные.
+-- =====================================================================
+local autodetect_running = false
+local autodetect_dropdown_ref = nil -- ссылка на дропдаун для обновления
+
+local function run_autodetect(duration)
+	if autodetect_running then return end
+	autodetect_running = true
+
+	local detected = {}
+	for m in silent_methods do
+		detected[m] = 0
+	end
+
+	Library.Notification("Scanning methods ("..duration.."s)... shoot your weapon!", duration + 1, Color3.fromRGB(255, 200, 80))
+
+	-- На время сканирования включаем ВСЕ методы (чтобы __namecall хук ловил)
+	for m in silent_methods do
+		silent_methods[m] = true
+	end
+
+	-- Шпионские хуки на функции workspace / Camera
+	local spy_hooks = {}
+
+	local function spy_wrap(obj, method_name, key)
+		pcall(function()
+			local old; old = hookfunction(obj[method_name], newcclosure(function(self2, ...)
+				if not checkcaller() then
+					detected[key] = (detected[key] or 0) + 1
+				end
+				return old(self2, ...)
+			end))
+			spy_hooks[key] = {func = obj[method_name], old = old, obj = obj, method = method_name}
+		end)
+	end
+
+	spy_wrap(workspace, "Raycast", "Raycast")
+	spy_wrap(workspace, "FindPartOnRay", "FindPartOnRay")
+	spy_wrap(workspace, "FindPartOnRayWithIgnoreList", "FindPartOnRayWithIgnoreList")
+	spy_wrap(workspace, "FindPartOnRayWithWhitelist", "FindPartOnRayWithWhitelist")
+	spy_wrap(Camera, "ScreenPointToRay", "ScreenPointToRay")
+	spy_wrap(Camera, "ViewportPointToRay", "ViewportPointToRay")
+
+	-- Mouse.Hit/Target считаем через флаг (обрабатывается в хуке __index)
+	getgenv().__autodetect_mouse_spy = true
+	getgenv().__autodetect_mouse_count = 0
+
+	task.delay(duration, function()
+		-- Снимаем шпионские хуки
+		for key, data in spy_hooks do
+			pcall(function()
+				hookfunction(data.old, data.old) -- восстановление не нужно, hookfunction вернул old
+			end)
+		end
+		-- Простой способ: просто переставляем — при следующем вызове __namecall основной хук и так работает
+
+		detected["Mouse"] = getgenv().__autodetect_mouse_count or 0
+		getgenv().__autodetect_mouse_spy = false
+
+		-- Анализируем
+		local found_any = false
+		local result_parts = {}
+
+		for method, count in detected do
+			if count > 0 then
+				silent_methods[method] = true
+				found_any = true
+				table.insert(result_parts, method .. "(" .. count .. ")")
+			else
+				silent_methods[method] = false
+			end
+		end
+
+		if found_any then
+			Library.Notification("Auto-detect: " .. table.concat(result_parts, ", "), 6, Color3.fromRGB(100, 255, 100))
+		else
+			-- Фоллбэк: включаем все
+			for m in silent_methods do
+				silent_methods[m] = true
+			end
+			Library.Notification("No methods detected — enabled ALL as fallback. Try shooting during scan!", 6, Color3.fromRGB(255, 150, 80))
+		end
+
+		autodetect_running = false
+	end)
+end
+
+-- ============================================================
+--  HITMARKER shared state (3D floating, видно из всех блоков)
+-- ============================================================
+local hm_enabled    = false
+local hm_color      = Color3.new(1, 1, 1)
+local hm_kill_color = Color3.fromRGB(220, 80, 80)
+local hm_size       = 12
+local hm_thick      = 2
+local hm_duration   = 3.0   -- секунд живёт каждый хитмаркер
+-- Очередь активных хитмаркеров: {world_pos, damage, is_kill, born, offset_y}
+local hm_queue      = {}
+-- Устаревшие поля (для совместимости, не используются в новой системе)
+local hm_active     = false
+local hm_timer      = 0
+local hm_is_kill    = false
+local hm_cur_color  = Color3.new(1, 1, 1)
+local hm_world_pos  = nil
+local hm_screen_pos = nil
+
 do
 	local aimsec = ui.sections.aimbot_main
-	local chksec = ui.sections.aimbot_checks
+	local chksec = ui.sections.aimbot_main  -- "Checks" merged into Aimbot section
 	local samsec = ui.sections.aimbot_silent
 	local hitsec = ui.sections.hit_detection
 	local gunsec = ui.sections.gunmods
 
-	local aimbot_enabled, aimbot_enabled_key, aimbot_part, aimbot_mode, aimbot_smoothness = false, false, "Head", "Mouse", 0.7
+	local aimbot_enabled, aimbot_enabled_key, aimbot_part, aimbot_smoothness = false, false, "Head", 0.7
+	aimbot_mode = "Mouse"  -- используем глобальный aimbot_mode (читается из __namecall хука)
 	local aimbot_team_check, aimbot_dead_check, aimbot_dist_check, aimbot_max_distance = false, false, false, 600
-	local fov_show, fov_color, fov_outline, fov_size = false, Color3.new(1,1,1), false, 100
+	local fov_show, fov_color, fov_outline, fov_size = false, Color3.fromRGB(200, 170, 255), false, 100
+
+	-- hm_* переменные вынесены выше как shared state (видны обоим do-блокам)
+	-- ke_enabled объявлен здесь т.к. используется только внутри этого блока
+	local ke_enabled = false
+	local hm_alpha     = 0
+	-- состояние kill effect (теперь не используется, оставлено для совместимости)
+	local ke_spawn_pos  = nil
+	local ke_do_spawn   = false
+	-- FOV style
+	local fov_thickness        = 1
+	local fov_filled           = false
+	local fov_filled_alpha     = 0.92
+	local fov_glow             = false
+	local fov_glow_color       = Library.Theme.accent
+	local fov_glow_alpha       = 0.960
+	local fov_outline_color    = Color3.new(0, 0, 0)
+	local fov_outline_alpha    = 0.18
+	local fov_outline_thick    = 0.75
 	local indicator = cheat.IndicatorLibrary:new_indicator()
+	cheat._aimIndicator = indicator
 
 	do
 		aimsec:Toggle({Name = "Enabled", Value = false, Flag = "aimbot_enable", Callback = function(bool)
@@ -6859,37 +8361,278 @@ do
 		end})
 	end
 	do
-		-- Gun Modifications (UI). Переменные доступны для логики оружия,
-		-- если/когда она будет реализована под конкретную игру.
+		-- ============================================================
+		-- GUN MODIFICATIONS — полностью универсально, любая игра
+		--
+		-- Принцип работы:
+		--  1. getgc() — находим ВСЕ живые таблицы в памяти Lua
+		--  2. Для каждой таблицы проверяем: содержит ли она числовые
+		--     поля из расширенных списков ключей (200+ вариантов названий)
+		--  3. Если значение подходит под критерий — подменяем
+		--  4. Дополнительно: hookmetamethod на __newindex самих таблиц —
+		--     игра пытается восстановить значение → мы снова подменяем
+		--  5. Remove Recoil — через уже существующий __newindex хук камеры
+		-- ============================================================
+
 		local gun_remove_bullet_drop = false
-		local gun_remove_occlusion   = false
 		local gun_remove_recoil      = false
 		local gun_instant_bullet     = false
 		local gun_instant_aim        = false
-		local gun_force_firemodes    = false
-		local gun_manipulation       = false
+		local gun_no_spread          = false
 
-		gunsec:Toggle({Name = "Remove Bullet Drop", Value = false, Flag = "gun_remove_bullet_drop", Callback = function(bool)
-			gun_remove_bullet_drop = bool
-		end})
-		gunsec:Toggle({Name = "Remove Occlusion", Value = false, Flag = "gun_remove_occlusion", Callback = function(bool)
-			gun_remove_occlusion = bool
-		end})
-		gunsec:Toggle({Name = "Remove Recoil", Value = false, Flag = "gun_remove_recoil", Callback = function(bool)
-			gun_remove_recoil = bool
-		end})
-		gunsec:Toggle({Name = "Instant Bullet", Value = false, Flag = "gun_instant_bullet", Callback = function(bool)
-			gun_instant_bullet = bool
-		end})
-		gunsec:Toggle({Name = "Instant Aim", Value = false, Flag = "gun_instant_aim", Callback = function(bool)
-			gun_instant_aim = bool
-		end})
-		gunsec:Toggle({Name = "Force Firemodes", Value = false, Flag = "gun_force_firemodes", Callback = function(bool)
-			gun_force_firemodes = bool
-		end})
-		gunsec:Toggle({Name = "Manipulation", Value = false, Flag = "gun_manipulation", Callback = function(bool)
-			gun_manipulation = bool
-		end})
+		-- ---- Расширенные списки ключей (охватывают большинство игр) ----
+		local KEYS_GRAVITY = {
+			"Gravity","gravity","BulletGravity","bulletGravity","GravityScale",
+			"gravityScale","gravityFactor","GravityFactor","dropRate","DropRate",
+			"bulletDrop","BulletDrop","projectileGravity","ProjectileGravity",
+			"g","G","grav","PhysicsGravity","physicsGravity",
+		}
+		local KEYS_SPREAD = {
+			"Spread","spread","MaxSpread","maxSpread","MinSpread","minSpread",
+			"BulletSpread","bulletSpread","HipSpread","hipSpread","AimSpread","aimSpread",
+			"SpreadFactor","spreadFactor","Accuracy","accuracy","InAccuracy","inaccuracy",
+			"bloomFactor","BloomFactor","Bloom","bloom","recoilSpread","RecoilSpread",
+			"dispersion","Dispersion","cone","Cone","coneAngle","ConeAngle",
+			"bulletDeviation","BulletDeviation","deviation","Deviation",
+			"hipfireSpread","HipfireSpread","adsSpread","ADSSpread",
+		}
+		local KEYS_SPEED = {
+			"BulletSpeed","bulletSpeed","bullet_speed","BulletVelocity","bulletVelocity",
+			"MuzzleVelocity","muzzleVelocity","ProjectileSpeed","projectileSpeed",
+			"InitialSpeed","initialSpeed","launchSpeed","LaunchSpeed",
+			"ShootSpeed","shootSpeed","FireSpeed","fireSpeed",
+			"velocity","Velocity","projectileVelocity","ProjectileVelocity",
+			"bulletForce","BulletForce","impulse","Impulse",
+		}
+		local KEYS_AIMTIME = {
+			"AimTime","aimTime","aim_time","ADSTime","adsTime",
+			"AimDownSightsTime","aimDownSightsTime","ZoomTime","zoomTime",
+			"ZoomInTime","zoomInTime","ZoomOutTime","zoomOutTime",
+			"EquipTime","equipTime","DrawTime","drawTime","ReadyTime","readyTime",
+			"AimSpeed","aimSpeed","adsSpeed","ADSSpeed","aimRate","AimRate",
+			"transitionTime","TransitionTime","lerpTime","LerpTime",
+		}
+		local KEYS_RECOIL = {
+			"Recoil","recoil","RecoilAmount","recoilAmount","RecoilPower","recoilPower",
+			"RecoilStrength","recoilStrength","CameraRecoil","cameraRecoil",
+			"CamRecoil","camRecoil","ViewRecoil","viewRecoil",
+			"Kick","kick","KickBack","kickBack","CameraKick","cameraKick",
+			"RecoilX","recoilX","RecoilY","recoilY","RecoilZ","recoilZ",
+			"RecoilMin","recoilMin","RecoilMax","recoilMax",
+			"RecoilUp","recoilUp","RecoilSide","recoilSide",
+			"recoilVertical","recoilHorizontal","verticalRecoil","horizontalRecoil",
+		}
+
+		-- ---- Кэш уже найденных таблиц (для быстрого повторного патча) ----
+		-- Ключ: таблица, Значение: набор ключей которые нашли в ней
+		local found_tables = {
+			gravity  = {},  -- {[tbl] = key}
+			spread   = {},
+			speed    = {},
+			aimtime  = {},
+			recoil   = {},
+		}
+
+		-- ---- Применить значение к кэшированным таблицам ----
+		local function apply_cache(cache, value)
+			for tbl, key in cache do
+				pcall(function()
+					setreadonly(tbl, false)
+					tbl[key] = value
+				end)
+			end
+		end
+
+		-- ---- Сканировать getgc() и заполнить/обновить кэш ----
+		-- Важно: раньше весь getgc проходился одним куском прямо при включении toggle,
+		-- из-за этого были микрофризы. Теперь скан режется на маленькие чанки.
+		local SCAN_CHUNK_SIZE = 220
+		local function scan_gc(keys, cache, check, value)
+			local ok, objects = pcall(getgc, true)
+			if not ok or type(objects) ~= "table" then return end
+
+			local processed = 0
+			for _, v in objects do
+				if type(v) == "table" and not cache[v] then
+					for _, key in keys do
+						local okRaw, val = pcall(rawget, v, key)
+						if okRaw and check(val) then
+							cache[v] = key
+							pcall(function()
+								setreadonly(v, false)
+								v[key] = value
+							end)
+							break
+						end
+					end
+				end
+
+				processed += 1
+				if processed % SCAN_CHUNK_SIZE == 0 then
+					task.wait()
+				end
+			end
+		end
+
+		-- ---- Полный скан + применение ко всем кэшированным ----
+		local scan_running = false
+		local function run_patch()
+			if scan_running then return end
+			scan_running = true
+
+			if gun_remove_bullet_drop then
+				scan_gc(KEYS_GRAVITY, found_tables.gravity,
+					function(v) return type(v)=="number" and v~=0 and math.abs(v)<2000 end, 0)
+				apply_cache(found_tables.gravity, 0)
+			end
+			if gun_no_spread then
+				scan_gc(KEYS_SPREAD, found_tables.spread,
+					function(v) return type(v)=="number" and v>0 and v<1000 end, 0)
+				apply_cache(found_tables.spread, 0)
+			end
+			if gun_instant_bullet then
+				scan_gc(KEYS_SPEED, found_tables.speed,
+					function(v) return type(v)=="number" and v>0 and v<500000 end, 9e8)
+				apply_cache(found_tables.speed, 9e8)
+			end
+			if gun_instant_aim then
+				scan_gc(KEYS_AIMTIME, found_tables.aimtime,
+					function(v) return type(v)=="number" and v>0 and v<60 end, 0)
+				apply_cache(found_tables.aimtime, 0)
+			end
+			if gun_remove_recoil then
+				scan_gc(KEYS_RECOIL, found_tables.recoil,
+					function(v) return type(v)=="number" and v ~= 0 and math.abs(v) < 10000 end, 0)
+				apply_cache(found_tables.recoil, 0)
+			end
+
+			scan_running = false
+		end
+
+		-- ---- Heartbeat: быстрый re-apply кэша + редкий полный скан ----
+		local accum_fast = 0   -- повторное применение к кэшу
+		local accum_full = 0   -- полный скан getgc()
+		game:GetService("RunService").Heartbeat:Connect(LPH_NO_VIRTUALIZE(function(dt)
+			if not (gun_remove_bullet_drop or gun_no_spread
+				or gun_instant_bullet or gun_instant_aim or gun_remove_recoil) then return end
+
+			-- Каждые 0.25с — применяем к уже найденным таблицам. Так меньше микрофризов/нагрузки.
+			accum_fast += dt
+			if accum_fast >= 0.25 then
+				accum_fast = 0
+				if gun_remove_bullet_drop then apply_cache(found_tables.gravity,  0)   end
+				if gun_no_spread          then apply_cache(found_tables.spread,    0)   end
+				if gun_instant_bullet     then apply_cache(found_tables.speed,     9e8) end
+				if gun_instant_aim        then apply_cache(found_tables.aimtime,   0)   end
+				if gun_remove_recoil      then apply_cache(found_tables.recoil,    0)   end
+			end
+
+			-- Полный getgc-скан больше НЕ запускается каждые 2 секунды: это и давало микрофризы.
+			-- Новый скан делается только при включении функции / смене оружия через повторное включение toggles.
+			accum_full += dt
+		end))
+
+		-- ---- Remove Recoil ----
+		-- Старый вариант лочил Camera.CFrame каждый RenderStepped, из-за этого нельзя было нормально крутить камеру.
+		-- Теперь recoil убирается патчем числовых параметров оружия через getgc-cache, без блокировки камеры.
+		getgenv()._gun_remove_recoil = false
+		getgenv()._recoil_locked_cf  = nil
+
+		-- ---- UI toggles ----
+		gunsec:Toggle({Name = "Remove Bullet Drop", Value = false, Flag = "gun_remove_bullet_drop",
+			Callback = function(bool)
+				gun_remove_bullet_drop = bool
+				if bool then task.spawn(run_patch) end
+			end})
+
+		gunsec:Toggle({Name = "No Spread", Value = false, Flag = "gun_no_spread",
+			Callback = function(bool)
+				gun_no_spread = bool
+				if bool then task.spawn(run_patch) end
+			end})
+
+		gunsec:Toggle({Name = "Remove Recoil", Value = false, Flag = "gun_remove_recoil",
+			Callback = function(bool)
+				gun_remove_recoil = bool
+				getgenv()._gun_remove_recoil = bool
+				getgenv()._recoil_locked_cf  = nil
+				if bool then task.spawn(run_patch) end
+			end})
+
+		gunsec:Toggle({Name = "Instant Bullet", Value = false, Flag = "gun_instant_bullet",
+			Callback = function(bool)
+				gun_instant_bullet = bool
+				if bool then task.spawn(run_patch) end
+			end})
+
+		gunsec:Toggle({Name = "Instant Aim", Value = false, Flag = "gun_instant_aim",
+			Callback = function(bool)
+				gun_instant_aim = bool
+				if bool then task.spawn(run_patch) end
+			end})
+
+		-- ── Bullet Teleport ──────────────────────────────────────
+		local bt_enabled  = false
+		local bt_offset   = "Behind target"
+		local bt_distance = 5
+
+		-- Кеш решённой точки для "Solve (auto)" — обновляется в heartbeat,
+		-- не в __namecall (иначе 336 raycast-ов синхронно = фриз)
+		local bt_solved_cache = nil
+		local bt_solve_acc    = 0
+
+		local BT_OFFSETS = {
+			["Behind target"] = function(part) return (part.CFrame * CFrame.new(0, 0,  bt_distance)).Position end,
+			["In front"]      = function(part) return (part.CFrame * CFrame.new(0, 0, -bt_distance)).Position end,
+			["Left side"]     = function(part) return (part.CFrame * CFrame.new(-bt_distance, 0, 0)).Position end,
+			["Right side"]    = function(part) return (part.CFrame * CFrame.new( bt_distance, 0, 0)).Position end,
+			["Above"]         = function(part) return (part.CFrame * CFrame.new(0,  bt_distance, 0)).Position end,
+			-- Solve (auto): возвращает последний кешированный результат (обновляется в heartbeat)
+			["Solve (auto)"]  = function(part) return bt_solved_cache or (part.CFrame * CFrame.new(0, bt_distance, 0)).Position end,
+		}
+
+		-- Обновляем кеш SolveOrigin в heartbeat (не в __namecall!)
+		cheat.utility.new_heartbeat(function(dt)
+			if not bt_enabled then bt_solved_cache = nil; return end
+			if bt_offset ~= "Solve (auto)" then bt_solved_cache = nil; return end
+			if not (target_part and target_part.Parent) then bt_solved_cache = nil; return end
+			bt_solve_acc = bt_solve_acc + dt
+			if bt_solve_acc < 0.1 then return end  -- обновляем 10 раз/сек
+			bt_solve_acc = 0
+			-- pcall чтобы не крашило если SolveOrigin что-то пойдёт не так
+			local ok, result = pcall(Manipulation.SolveOrigin, target_part, bt_distance, 12)
+			if ok and result then bt_solved_cache = result end
+		end)
+
+		getgenv().__bt_enabled  = false
+		getgenv().__bt_get_origin = function(hitpart)
+			if not bt_enabled then return nil end
+			local fn = BT_OFFSETS[bt_offset]
+			if not fn then return nil end
+			local ok, pos = pcall(fn, hitpart)
+			return ok and pos or nil
+		end
+
+		gunsec:Toggle({Name = "Bullet Teleport", Value = false, Flag = "gun_bt_enabled",
+			Callback = function(bool)
+				bt_enabled = bool
+				getgenv().__bt_enabled = bool
+			end})
+
+		gunsec:Dropdown({Name = "BT Origin", Values = {
+			"Behind target", "In front", "Left side", "Right side", "Above", "Solve (auto)"
+		}, Value = "Behind target", Flag = "gun_bt_offset", Multi = false,
+			Callback = function(val)
+				bt_offset = val or "Behind target"
+			end})
+
+		gunsec:Slider({Name = "BT Distance", Min = 1, Max = 20, Float = 0.5, Value = 5,
+			Suffix = "%s studs", Flag = "gun_bt_distance",
+			Callback = function(val)
+				bt_distance = val
+			end})
+		-- ─────────────────────────────────────────────────────────
+
 	end
 	do
 		chksec:Dropdown({Name = "Checks", Values = {"Team check", "Dead check", "Distance check"}, Value = {}, Flag = "aimbot_checks", Multi = true, Callback = function(tbl)
@@ -6917,47 +8660,269 @@ do
 		chksec:Slider({Name = "Max distance", Min = 0, Max = 5000, Float = 100, Value = 600, Flag = "aimbot_max_distance", Callback = function(int)
 			aimbot_max_distance = int
 		end})
-		chksec:Slider({Name = "Aim size", Min = 0, Max = 180, Float = 1, Value = 10, Flag = "aimbot_fov_size", Suffix = "%s\194\176" --[[degree symbol (°)]], Callback = function(int)
-			fov_size = int
-		end})
+
+		-- FOV settings are now inside the Aimbot section and live under the FOV toggle.
+		local fov_controls = {}
+		local function update_fov_controls_visibility()
+			for _, obj in fov_controls do
+				if obj and obj.SetVisibility then
+					obj:SetVisibility(fov_show)
+				end
+			end
+		end
+
 		chksec:Toggle({Name = "FOV", Value = false, Flag = "fov_enabled", Callback = function(bool)
 			fov_show = bool
+			update_fov_controls_visibility()
 		end}):Colorpicker({Name = "FOV Color", Value = Color3.new(1, 1, 1), Usealpha = false, Flag = "fov_color", Callback = function(color)
 			fov_color = color.c
 		end})
-		chksec:Toggle({Name = "Outline", Value = false, Flag = "fov_outline", Callback = function(bool)
+
+		fov_controls.size = chksec:Slider({Name = "FOV size", Min = 0, Max = 180, Float = 1, Value = 10, Flag = "aimbot_fov_size", Suffix = "%s\194\176" --[[degree symbol (°)]], Callback = function(int)
+			fov_size = int
+		end})
+		fov_controls.thickness = chksec:Slider({Name = "FOV thickness", Min = 1, Max = 6, Float = 1, Value = 1, Flag = "fov_thickness", Callback = function(v)
+			fov_thickness = v
+		end})
+		local fov_glow_toggle = chksec:Toggle({Name = "FOV glow", Value = false, Flag = "fov_glow", Callback = function(bool)
+			fov_glow = bool
+		end})
+		fov_glow_toggle:Colorpicker({Name = "FOV glow color", Default = fov_glow_color, Value = fov_glow_color, Usealpha = false, Flag = "fov_glow_color", Callback = function(color)
+			fov_glow_color = color.c
+		end})
+		fov_controls.glow = fov_glow_toggle
+		fov_controls.outline = chksec:Toggle({Name = "FOV outline", Value = false, Flag = "fov_outline_tog", Callback = function(bool)
 			fov_outline = bool
 		end})
+		fov_controls.outline_thickness = chksec:Slider({Name = "Outline thickness", Min = 0.5, Max = 2, Float = 0.25, Value = 0.75, Flag = "fov_outline_thick", Callback = function(v)
+			fov_outline_thick = v
+		end})
+
+		update_fov_controls_visibility()
 	end
 	do
-		local hit_logs, hit_logs_duration = false, 0
+		local hit_logs, hit_logs_duration = false, 5
+		local hit_logs_position = "Center"
+		local hit_logs_color = Library.Theme.accent
 		local hit_chams, hit_skeletons = false, false
+
+		-- Custom hitlogs renderer. Positions: Center / Left / Top / Top left.
+		local HitLogTweenService = game:GetService("TweenService")
+		local CoreGuiHitLogs = cloneref and cloneref(game:GetService("CoreGui")) or game:GetService("CoreGui")
+		local hitLogsGui = Instance.new("ScreenGui")
+		hitLogsGui.Name = "FrostHitLogsGui"
+		hitLogsGui.ResetOnSpawn = false
+		hitLogsGui.IgnoreGuiInset = true
+		hitLogsGui.DisplayOrder = 9998
+		hitLogsGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+		pcall(function() hitLogsGui.Parent = CoreGuiHitLogs end)
+		if not hitLogsGui.Parent then
+			hitLogsGui.Parent = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
+		end
+
+		local hitLogsHolder = Instance.new("Frame", hitLogsGui)
+		hitLogsHolder.Name = "Holder"
+		hitLogsHolder.BackgroundTransparency = 1
+		hitLogsHolder.BorderSizePixel = 0
+		-- AutomaticSize X: ширина = самая длинная строка, блок по центру экрана
+		hitLogsHolder.AutomaticSize = Enum.AutomaticSize.XY
+		hitLogsHolder.Size = UDim2.fromOffset(0, 0)
+		hitLogsHolder.Position = UDim2.new(0.5, 0, 0.62, 0)
+		hitLogsHolder.AnchorPoint = Vector2.new(0.5, 0)
+
+		local hitLogsLayout = Instance.new("UIListLayout", hitLogsHolder)
+		hitLogsLayout.FillDirection = Enum.FillDirection.Vertical
+		-- Left: все строки выровнены по одному левому краю блока
+		hitLogsLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
+		hitLogsLayout.VerticalAlignment = Enum.VerticalAlignment.Top
+		hitLogsLayout.SortOrder = Enum.SortOrder.LayoutOrder
+		hitLogsLayout.Padding = UDim.new(0, 0)
+
+		local activeHitLogs = {}
+		local hitlog_order = 0
+		local HITLOG_ROW_HEIGHT = 18
+
+		local function update_hitlogs_position()
+			-- AutomaticSize: холдер растягивается по контенту, позиционируем по центру
+			if hit_logs_position == "Center" then
+				hitLogsHolder.AnchorPoint = Vector2.new(0.5, 0)
+				hitLogsHolder.Position = UDim2.new(0.5, 0, 0.62, 0)
+			elseif hit_logs_position == "Left" then
+				hitLogsHolder.AnchorPoint = Vector2.new(0, 0.5)
+				hitLogsHolder.Position = UDim2.new(0, 18, 0.5, 0)
+			elseif hit_logs_position == "Top" then
+				hitLogsHolder.AnchorPoint = Vector2.new(0.5, 0)
+				hitLogsHolder.Position = UDim2.new(0.5, 0, 0, 78)
+			else -- Top left
+				hitLogsHolder.AnchorPoint = Vector2.new(0, 0)
+				hitLogsHolder.Position = UDim2.new(0, 18, 0, 78)
+			end
+
+			-- AutomaticSize управляет шириной, ничего не меняем
+		end
+
+		local function show_hitlog(text, duration)
+			duration = math.max(0.1, tonumber(duration) or 5)
+
+			if hit_logs_position == "Top left" then
+				Library.Notification(text, duration, hit_logs_color)
+				return
+			end
+
+			local hitlogFont = Fonts and Fonts.Get and Fonts.Get("TahomaXP") or nil
+
+			local label = Instance.new("TextLabel")
+			hitlog_order += 1
+			label.Name = "HitLog"
+			label.LayoutOrder = -hitlog_order
+			label.Parent = hitLogsHolder
+			label.BackgroundTransparency = 1
+			label.BorderSizePixel = 0
+			-- AutomaticSize X: лейбл растягивается по тексту, все строки Left-aligned
+			label.AutomaticSize = Enum.AutomaticSize.X
+			label.Size = UDim2.fromOffset(0, HITLOG_ROW_HEIGHT)
+			if hitlogFont then
+				label.FontFace = hitlogFont
+			else
+				label.Font = Enum.Font.Code
+			end
+			label.TextSize = Library.FontSize or 12
+			label.TextColor3 = Color3.new(1, 1, 1)
+			label.TextStrokeColor3 = Color3.new(0, 0, 0)
+			label.TextStrokeTransparency = 1
+			label.TextTransparency = 1
+			label.RichText = true
+			label.Text = text
+			-- Left: [frost.vip] всегда на одной вертикальной линии слева
+			label.TextXAlignment = Enum.TextXAlignment.Left
+			label.TextYAlignment = Enum.TextYAlignment.Center
+			label.ZIndex = 10
+
+			table.insert(activeHitLogs, label)
+			update_hitlogs_position()
+			label.Size = UDim2.fromOffset(0, 0)
+
+			HitLogTweenService:Create(label, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+				TextTransparency = 0,
+				TextStrokeTransparency = 0.35,
+				Size = UDim2.fromOffset(0, HITLOG_ROW_HEIGHT)
+			}):Play()
+
+			task.delay(duration, function()
+				if not label or not label.Parent then return end
+				local tween = HitLogTweenService:Create(label, TweenInfo.new(0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+					TextTransparency = 1, TextStrokeTransparency = 1
+				})
+				tween:Play()
+				tween.Completed:Wait()
+				for i, v in activeHitLogs do
+					if v == label then
+						table.remove(activeHitLogs, i)
+						break
+					end
+				end
+				label:Destroy()
+			end)
+		end
+
+		local function rich_escape(text)
+			return tostring(text):gsub("&", "&amp;"):gsub("<", "&lt;"):gsub(">", "&gt;"):gsub('"', "&quot;"):gsub("'", "&apos;")
+		end
+
+		local function color_to_rgb(color)
+			local r = color.R or color.r or 1
+			local g = color.G or color.g or 1
+			local b = color.B or color.b or 1
+			return math.floor(r * 255), math.floor(g * 255), math.floor(b * 255)
+		end
+
+		local function build_hitlog_text(player_name, part_name, damage, health)
+			local r, g, b = color_to_rgb(hit_logs_color)
+			local accent_open  = string.format('<font color="rgb(%s, %s, %s)">', r, g, b)
+			local accent_close = '</font>'
+			return string.format(
+				'[ %sfrost.vip%s ] Hit %s in the %s for %s damage (%s health remaining)',
+				accent_open,
+				accent_close,
+				rich_escape(player_name),
+				rich_escape(part_name),
+				rich_escape(damage),
+				rich_escape(health)
+			)
+		end
+
 		hitsec:Toggle({Name = "Hitlogs", Value = false, Flag = "hit_logs", Callback = function(bool)
 			hit_logs = bool
+		end}):Colorpicker({Name = "Hitlog Color", Default = hit_logs_color, Value = hit_logs_color, Usealpha = false, Flag = "hit_logs_color", Callback = function(color)
+			hit_logs_color = color.c
+		end})
+		hitsec:Dropdown({Name = "Hitlog position", Values = {"Center", "Left", "Top", "Top left"}, Value = "Center", Flag = "hit_logs_position", Multi = false, Callback = function(value)
+			hit_logs_position = value or "Center"
+			update_hitlogs_position()
 		end})
 		hitsec:Slider({Name = "Log duration", Min = 0, Max = 10, Float = 0.1, Value = 5, Flag = "hit_logs_duration", Suffix = "%ss", Callback = function(int)
 			hit_logs_duration = int
 		end})
+		hitsec:Button({Name = "Test hitlog", Callback = function()
+			show_hitlog(build_hitlog_text("test_player", aimbot_part or "Head", 42, 58), hit_logs_duration)
+		end})
+
+		update_hitlogs_position()
 
 		hit_detection = function(player, new_health, old_health)
-			if not target_player or player ~= target_player then
-				return
-			end
 			if new_health >= old_health then
 				return
 			end
-			Library.Notification(string.format(
-				"Hit %s in the %s for %s damage (%s health remaining)", 
-				Utility.RichText(player.Name, Library.Theme.accent), 
-				Utility.RichText(aimbot_part, Library.Theme.accent), 
-				Utility.RichText(tostring(math.floor(old_health - new_health)), Library.Theme.accent), 
-				Utility.RichText(tostring(math.floor(new_health)), Library.Theme.accent)
-				), hit_logs_duration)
+
+			-- ---- 3D Hitmarker: срабатывает при ЛЮБОМ уроне по любому игроку ----
+			if hm_enabled and player ~= LocalPlayer then
+				local char = player.Character
+				if char then
+					local root = char:FindFirstChild("Head")
+						or char:FindFirstChild("HumanoidRootPart")
+						or char:FindFirstChild("UpperTorso")
+					if root and root.Parent then
+						-- Фиксируем позицию В МОМЕНТ ПОПАДАНИЯ (не двигается)
+						local hit_pos = root.Position
+						table.insert(hm_queue, {
+							pos  = hit_pos,   -- замороженная позиция хита
+							born = tick(),
+						})
+					end
+				end
+			end
+
+			-- Для hitlogs: проверяем что это наша цель (текущая или последняя)
+			local is_our_target = (target_player and player == target_player)
+			if not is_our_target then
+				is_our_target = (last_target_player and player == last_target_player and (tick() - last_target_tick) < 2)
+			end
+
+			-- Kill Effect - только если МЫ убили (наша цель умерла)
+			if new_health <= 0 and ke_enabled and is_our_target and player ~= LocalPlayer then
+				local char = player.Character
+				if char then
+					local root = char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Head") or char:FindFirstChild("UpperTorso") or char:FindFirstChild("Torso")
+					if root then
+						ke_createEffect(root.Position + Vector3.new(0, 2, 0))
+					end
+				end
+			end
+			
+			if not is_our_target then return end
+			if not hit_logs then return end
+			show_hitlog(build_hitlog_text(
+				player.Name,
+				aimbot_part or "Head",
+				math.floor(old_health - new_health),
+				math.floor(new_health)
+			), hit_logs_duration)
 		end
 	end
 	
 	do
 		chksec:Dropdown({Name = "Silent mode", Values = {
+			"Auto",
 			"Raycast",
 			"FindPartOnRayWithIgnoreList",
 			"FindPartOnRayWithWhitelist",
@@ -6965,17 +8930,33 @@ do
 			"ScreenPointToRay",
 			"ViewportPointToRay",
 			"Mouse",
+			"Camera",
 			"Ray"
 		}, Value = {}, Flag = "aimbot_silent_mode", Multi = true, Callback = function(tbl)
-				for i, v in silent_methods do
+			-- Проверяем: выбран ли "Auto"?
+			local has_auto = false
+			for _, value in tbl do
+				if value == "Auto" then
+					has_auto = true
+					break
+				end
+			end
+
+			if has_auto then
+				-- Запускаем автодетект на 4 секунды
+				run_autodetect(4)
+			else
+				-- Ручной выбор (как раньше)
+				for i in silent_methods do
 					silent_methods[i] = false
 				end
-				print('--------------------------------')
 				for _, value in tbl do
-					silent_methods[value] = true
-					print(value)
+					if silent_methods[value] ~= nil then
+						silent_methods[value] = true
+					end
 				end
-			end})
+			end
+		end})
 		chksec:Toggle({Name = "Projection override", Value = false, Flag = "silent_projectionoverride", Callback = function(bool)
 			silent_projectionoverride = bool
 		end})
@@ -6987,53 +8968,182 @@ do
 		end})
 	end
 
-	local CircleOutline = cheat.utility.new_drawing("Circle", {
-		Thickness = 3,
-		Color = Color3.new(),
-		ZIndex = 1
-	})
-	local CircleInline = cheat.utility.new_drawing("Circle", {
-		Transparency = 1,
-		Thickness = 1,
-		ZIndex = 2
-	})
+	-- ====== FOV через Frame + UICorner (идеальные круги) ======
+	local CoreGuiFov = cloneref and cloneref(game:GetService("CoreGui")) or game:GetService("CoreGui")
+	local fovGui = Instance.new("ScreenGui")
+	fovGui.Name           = "FOVGui"
+	fovGui.ResetOnSpawn   = false
+	fovGui.DisplayOrder   = 8
+	fovGui.IgnoreGuiInset = true
+	fovGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+	pcall(function() fovGui.Parent = CoreGuiFov end)
+	if not fovGui.Parent then
+		fovGui.Parent = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
+	end
 
-	cheat.utility.new_heartbeat(LPH_NO_VIRTUALIZE(function()
+	-- FOV glow: оптимизировано — меньше слоёв, визуально то же самое
+	local GLOW_LAYERS           = 16  -- было 60 → 120 фреймов, теперь 32 фрейма
+	local GLOW_RADIUS_PX        = 20
+	local GLOW_INTENSITY        = 0.960
+	local GLOW_STROKE_THICKNESS = 3.5 -- толще чтобы компенсировать меньше слоёв
+
+	-- создаём один Frame-кольцо с UICorner + UIStroke
+	local function createRingFrame(diameter, thickness, color, transparency)
+		local f = Instance.new("Frame", fovGui)
+		f.Size                  = UDim2.fromOffset(diameter, diameter)
+		f.AnchorPoint           = Vector2.new(0.5, 0.5)
+		f.BackgroundTransparency = 1
+		f.BorderSizePixel       = 0
+		local c = Instance.new("UICorner", f)
+		c.CornerRadius = UDim.new(1, 0)
+		local s = Instance.new("UIStroke", f)
+		s.Color           = color
+		s.Thickness       = thickness
+		s.Transparency    = transparency
+		s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+		return f
+	end
+
+	-- таблицы колец: glow внешний, outline, main, outline внутренний
+	local fovRings      = {}  -- {frame, radiusOffset}
+	local fovMainRing   = nil
+	local fovOutRing1   = nil  -- снаружи
+	local fovOutRing2   = nil  -- внутри
+	local fovGlowRings  = {}
+
+	-- glow слои — внешние + внутренние, плавное затухание
+	for i = 1, GLOW_LAYERS do
+		local t      = i / GLOW_LAYERS
+		-- Soft falloff. The last part is forced invisible so there is no visible final circle.
+		local smooth = t * t * (3 - 2 * t)
+		local alpha  = (1 - smooth) ^ 2.35
+		local transp = math.clamp(GLOW_INTENSITY + (1 - GLOW_INTENSITY) * (1 - alpha), 0, 1)
+		if t > 0.90 then
+			local edge = (t - 0.90) / 0.10
+			transp = math.clamp(transp + edge * edge * 0.08, 0, 1)
+		end
+		if t > 0.965 then transp = 1 end
+		local offset = t * GLOW_RADIUS_PX
+		local fo = createRingFrame(1, GLOW_STROKE_THICKNESS, Color3.new(1,1,1), transp)
+		fo.Visible = false
+		fovGlowRings[#fovGlowRings+1] = {frame=fo, offset=offset, baseTransparency=transp, stroke=fo:FindFirstChildOfClass("UIStroke")}
+		local fi = createRingFrame(1, GLOW_STROKE_THICKNESS, Color3.new(1,1,1), transp)
+		fi.Visible = false
+		fovGlowRings[#fovGlowRings+1] = {frame=fi, offset=-offset, baseTransparency=transp, stroke=fi:FindFirstChildOfClass("UIStroke")}
+	end
+
+	-- основное кольцо (тонкий лиловый как на скрине 2)
+	fovMainRing = createRingFrame(1, 1, Color3.fromRGB(200, 170, 255), 0)
+	fovMainRing.Visible = false
+	fovMainRing.ZIndex = 3
+
+	-- outline кольца: одно снаружи + одно внутри, под основным FOV кольцом
+	fovOutRing1 = createRingFrame(1, 1, Color3.new(0,0,0), fov_outline_alpha)
+	fovOutRing1.Visible = false
+	fovOutRing1.ZIndex = 2
+	fovOutRing2 = createRingFrame(1, 1, Color3.new(0,0,0), fov_outline_alpha)
+	fovOutRing2.Visible = false
+	fovOutRing2.ZIndex = 2
+
+	for _, g in ipairs(fovGlowRings) do
+		g.frame.ZIndex = 1
+	end
+
+	-- rate-limit: ищем цель не каждый кадр, а ~30 раз/сек
+	local _target_search_acc = 0
+	local _TARGET_SEARCH_RATE = 1/30
+
+	cheat.utility.new_heartbeat(LPH_NO_VIRTUALIZE(function(delta)
 		local indtxt = ""
 		if aimbot_enabled then
-			local viewportsize = Camera.ViewportSize
-			local new_fov_size = (viewportsize.X * (fov_size / Camera.FieldOfView)) / 2
-			target_part, target_player, target_collider = get_closest_target(
-				new_fov_size,
-				aimbot_part or "Head",
-				aimbot_team_check,
-				aimbot_dead_check,
-				aimbot_dist_check,
-				aimbot_max_distance
-			)
+			_target_search_acc = _target_search_acc + delta
+			if _target_search_acc >= _TARGET_SEARCH_RATE then
+				_target_search_acc = 0
+				local viewportsize = Camera.ViewportSize
+				local new_fov_size = (viewportsize.X * (fov_size / Camera.FieldOfView)) / 2
+				target_part, target_player, target_collider = get_closest_target(
+					new_fov_size,
+					aimbot_part or "Head",
+					aimbot_team_check,
+					aimbot_dead_check,
+					aimbot_dist_check,
+					aimbot_max_distance
+				)
+			end
 
 			if indicator.followpart then indicator.target_part = target_part end
 
 			if target_part and target_collider then
 				indtxt = target_player.Name
+				last_target_player = target_player
+				last_target_part = target_part
+				last_target_position = target_part.Position
+				last_target_tick = tick()
 			end
 		else
 			target_part, target_player, target_collider = nil, nil, nil
+			_target_search_acc = 0
 		end
 
 		indicator.text = indtxt
 	end))
+	-- кешируем UIStroke один раз в локальные переменные (не getgenv)
+	local _fov_ms  = fovMainRing:FindFirstChildOfClass("UIStroke")
+	local _fov_os1 = fovOutRing1:FindFirstChildOfClass("UIStroke")
+	local _fov_os2 = fovOutRing2:FindFirstChildOfClass("UIStroke")
+	local _fov_glow_was_on = false
+
 	cheat.utility.new_renderstepped(LPH_NO_VIRTUALIZE(function()
-		local mpos = UserInputService:GetMouseLocation()
+		local mpos        = UserInputService:GetMouseLocation()
 		local viewportsize = Camera.ViewportSize
 		local new_fov_size = (viewportsize.X * (fov_size / Camera.FieldOfView)) / 2
-		CircleInline.Position = mpos
-		CircleInline.Radius = new_fov_size
-		CircleInline.Color = fov_color
-		CircleInline.Visible = fov_show
-		CircleOutline.Position = mpos
-		CircleOutline.Radius = new_fov_size
-		CircleOutline.Visible = (fov_show and fov_outline)
+		local diameter     = new_fov_size * 2
+		local center       = UDim2.fromOffset(mpos.X, mpos.Y)
+
+		-- основное кольцо
+		fovMainRing.Visible  = fov_show
+		if fov_show then
+			fovMainRing.Position = center
+			fovMainRing.Size     = UDim2.fromOffset(diameter, diameter)
+			if _fov_ms then _fov_ms.Color = fov_color; _fov_ms.Thickness = fov_thickness end
+		end
+
+		-- outline
+		local showOut = fov_show and fov_outline
+		fovOutRing1.Visible = showOut
+		fovOutRing2.Visible = showOut
+		if showOut then
+			local outlineThickness = math.clamp(fov_outline_thick or 0.75, 0.5, 2)
+			local outlineOffset = math.max(0.5, ((fov_thickness or 1) + outlineThickness) * 0.5)
+			fovOutRing1.Position = center
+			fovOutRing2.Position = center
+			fovOutRing1.Size = UDim2.fromOffset(diameter + outlineOffset * 2, diameter + outlineOffset * 2)
+			fovOutRing2.Size = UDim2.fromOffset(math.max(2, diameter - outlineOffset * 2), math.max(2, diameter - outlineOffset * 2))
+			if _fov_os1 then _fov_os1.Color = fov_outline_color; _fov_os1.Thickness = outlineThickness; _fov_os1.Transparency = fov_outline_alpha end
+			if _fov_os2 then _fov_os2.Color = fov_outline_color; _fov_os2.Thickness = outlineThickness; _fov_os2.Transparency = fov_outline_alpha end
+		end
+
+		-- glow
+		local showGlow = fov_show and fov_glow
+		if showGlow then
+			for _, g in ipairs(fovGlowRings) do
+				g.frame.Visible  = g.baseTransparency < 0.995
+				local d = math.max(2, diameter + g.offset * 2)
+				g.frame.Position = center
+				g.frame.Size     = UDim2.fromOffset(d, d)
+				local gs = g.stroke
+				if gs then
+					gs.Color = fov_glow_color
+					gs.Transparency = math.clamp(g.baseTransparency + (fov_glow_alpha - 0.960), 0, 1)
+				end
+			end
+			_fov_glow_was_on = true
+		elseif _fov_glow_was_on then
+			for _, g in ipairs(fovGlowRings) do
+				g.frame.Visible = false
+			end
+			_fov_glow_was_on = false
+		end
 		if aimbot_enabled and aimbot_enabled_key and target_part and target_collider then
 			local new_pos = target_part.Position
 			if aimbot_mode == "Mouse" then
@@ -7044,8 +9154,881 @@ do
 			if aimbot_mode == "Camera" then
 				Camera.CFrame = Camera.CFrame:Lerp(CFrame.lookAt(Camera.CFrame.Position, new_pos), aimbot_smoothness)
 			end
+			-- Silent: мышка НЕ двигается (только custom crosshair приклеивается)
 		end
 	end))
+end
+
+-- ============================================================
+--  TARGET INFO панель + HITMARKERS + KILL EFFECT
+-- ============================================================
+do
+	local tisec  = ui.sections.target_info
+	local hmsec  = ui.sections.hitmarkers
+	local Players = game:GetService("Players")
+	local TargetInfoTweenService = game:GetService("TweenService")
+
+	-- ---- Target Info (ScreenGui, Active=false — не перехватывает клики) ----
+	local ti_enabled   = false
+	local ti_show_hp   = true
+	local ti_show_tool = true
+	local ti_line_glow = false
+	local ti_bar_color = Library.Theme.accent  -- по дефолту цвет Accent меню, как у hitlogs
+
+	local W, H = 220, 82
+	local TI_BAR_X = 68
+	local TI_BAR_W = W - TI_BAR_X - 8
+	local ti_x = 12
+	local ti_y = Camera.ViewportSize.Y - H - 12
+
+	local TahomaXP = Fonts and Fonts.Get("TahomaXP") or nil
+	local CoreGuiRef = cloneref and cloneref(game:GetService("CoreGui")) or game:GetService("CoreGui")
+
+	local tiGui = Instance.new("ScreenGui")
+	tiGui.Name            = "TIGui"
+	tiGui.ResetOnSpawn    = false
+	tiGui.DisplayOrder    = 9
+	tiGui.IgnoreGuiInset  = true
+	pcall(function() tiGui.Parent = CoreGuiRef end)
+	if not tiGui.Parent then tiGui.Parent = Players.LocalPlayer:WaitForChild("PlayerGui") end
+
+	-- Главный фрейм (не Active — клики проходят насквозь)
+	local tiCard = Instance.new("Frame", tiGui)
+	tiCard.Size             = UDim2.fromOffset(W, H)
+	tiCard.Position         = UDim2.fromOffset(ti_x, ti_y)
+	tiCard.BackgroundColor3 = Color3.fromRGB(12, 12, 12)
+	tiCard.BorderSizePixel  = 0
+	tiCard.Visible          = false
+	tiCard.Active           = false
+
+	-- Hidden config flags: save/load Target Info position with each config.
+	Library.Flags["ti_pos_x"] = Library.Flags["ti_pos_x"] or ti_x
+	Library.Flags["ti_pos_y"] = Library.Flags["ti_pos_y"] or ti_y
+	Library.SetFlags["ti_pos_x"] = function(value)
+		ti_x = tonumber(value) or ti_x
+		tiCard.Position = UDim2.fromOffset(ti_x, ti_y)
+	end
+	Library.SetFlags["ti_pos_y"] = function(value)
+		ti_y = tonumber(value) or ti_y
+		tiCard.Position = UDim2.fromOffset(ti_x, ti_y)
+	end
+
+	Instance.new("UICorner", tiCard).CornerRadius = UDim.new(0, 4)
+	local s1 = Instance.new("UIStroke", tiCard)
+	s1.Color = Color3.fromRGB(51,51,51); s1.Thickness = 1
+	s1.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+
+	-- accent линия сверху — берёт цвет из темы библиотеки
+	local tiAccent = Instance.new("Frame", tiCard)
+	tiAccent.Size             = UDim2.new(1,0,0,2)
+	tiAccent.BackgroundColor3 = Library and Library.Theme and Library.Theme["Accent"] or Color3.fromRGB(176,176,209)
+	tiAccent.BorderSizePixel  = 0
+	tiAccent.Active           = false
+	tiAccent.ZIndex           = 10
+	Instance.new("UICorner", tiAccent).CornerRadius = UDim.new(0,4)
+
+	-- glow для accent-линии Target Info — тот же паттерн, что у watermark/keybinds Liner Glow
+	local tiAccentGlow = Instance.new("ImageLabel", tiAccent)
+	tiAccentGlow.Name = "AccentGlow"
+	tiAccentGlow.ImageColor3 = tiAccent.BackgroundColor3
+	tiAccentGlow.ScaleType = Enum.ScaleType.Slice
+	tiAccentGlow.ImageTransparency = 0.8
+	tiAccentGlow.Size = UDim2.new(1, 25, 1, 25)
+	tiAccentGlow.AnchorPoint = Vector2.new(0.5, 0.5)
+	tiAccentGlow.Image = "http://www.roblox.com/asset/?id=18245826428"
+	tiAccentGlow.BackgroundTransparency = 1
+	tiAccentGlow.Position = UDim2.new(0.5, 0, 0.5, 0)
+	tiAccentGlow.BorderSizePixel = 0
+	tiAccentGlow.SliceCenter = Rect.new(Vector2.new(21, 21), Vector2.new(79, 79))
+	tiAccentGlow.Visible = false
+	tiAccentGlow.Active = false
+	tiAccentGlow.ZIndex = 1
+
+	-- аватарка
+	local tiAva = Instance.new("ImageLabel", tiCard)
+	tiAva.Size             = UDim2.fromOffset(54, 54)
+	tiAva.Position         = UDim2.fromOffset(4, 8)
+	tiAva.BackgroundColor3 = Color3.fromRGB(19,19,19)
+	tiAva.BorderSizePixel  = 0
+	tiAva.Image            = ""
+	tiAva.Active           = false
+	Instance.new("UICorner", tiAva).CornerRadius = UDim.new(0,3)
+
+	-- разделитель
+	local tiDiv = Instance.new("Frame", tiCard)
+	tiDiv.Size             = UDim2.fromOffset(1, H-12)
+	tiDiv.Position         = UDim2.fromOffset(62, 6)
+	tiDiv.BackgroundColor3 = Color3.fromRGB(51,51,51)
+	tiDiv.BorderSizePixel  = 0
+	tiDiv.Active           = false
+
+	local function mkFont(o)
+		if TahomaXP then o.FontFace = TahomaXP else o.Font = Enum.Font.Code end
+	end
+
+	local function mkLbl(txt, yOff)
+		local l = Instance.new("TextLabel", tiCard)
+		l.Size = UDim2.fromOffset(50,14); l.Position = UDim2.fromOffset(68, yOff)
+		l.BackgroundTransparency = 1; l.Text = txt; l.TextSize = 12
+		l.TextColor3 = Color3.fromRGB(134,134,134)
+		l.TextXAlignment = Enum.TextXAlignment.Left; l.Active = false; mkFont(l)
+		return l
+	end
+	local function mkVal(txt, yOff)
+		local v = Instance.new("TextLabel", tiCard)
+		v.Size = UDim2.fromOffset(140,14); v.Position = UDim2.fromOffset(68, yOff)
+		v.BackgroundTransparency = 1; v.Text = txt; v.TextSize = 12
+		v.TextColor3 = Color3.fromRGB(208,207,227)
+		v.TextXAlignment = Enum.TextXAlignment.Right; v.Active = false; mkFont(v)
+		return v
+	end
+
+	mkLbl("user", 8);  local tiVUser = mkVal("-",    8)
+	mkLbl("hp",   20); local tiVHp   = mkVal("-",    20)
+	mkLbl("tool", 32); local tiVTool = mkVal("none", 32)
+	mkLbl("visible", 44); local tiVVis = mkVal("no", 44)
+
+	-- hp бар
+	local tiBarBg = Instance.new("Frame", tiCard)
+	tiBarBg.Size             = UDim2.fromOffset(TI_BAR_W, 10)
+	tiBarBg.Position         = UDim2.fromOffset(TI_BAR_X, H-16)
+	tiBarBg.BackgroundColor3 = Color3.fromRGB(39,39,39)
+	tiBarBg.BorderSizePixel  = 0; tiBarBg.Active = false
+	Instance.new("UICorner", tiBarBg).CornerRadius = UDim.new(0,2)
+
+	local tiBarFill = Instance.new("Frame", tiBarBg)
+	tiBarFill.Size             = UDim2.fromOffset(0,10)
+	tiBarFill.BackgroundColor3 = Color3.fromRGB(0,210,60)
+	tiBarFill.BorderSizePixel  = 0; tiBarFill.Active = false
+	Instance.new("UICorner", tiBarFill).CornerRadius = UDim.new(0,2)
+
+	local tiBarTxt = Instance.new("TextLabel", tiBarBg)
+	tiBarTxt.Size = UDim2.fromScale(1,1); tiBarTxt.BackgroundTransparency = 1
+	tiBarTxt.Text = ""; tiBarTxt.TextSize = 9
+	tiBarTxt.TextColor3 = Color3.fromRGB(20,20,20); tiBarTxt.Active = false; mkFont(tiBarTxt)
+
+	-- перетаскивание через IsMouseButtonPressed (не через события GUI)
+	local tiDrag = false
+	local tiDS   = Vector2.new()
+	local tiDO   = Vector2.new()
+	local tiWas  = false
+	local lastAva = nil
+
+	-- Smooth data changes for Target Info
+	local tiTextCache = {}
+	local tiTextToken = {}
+	local tiLastBarRatio = -1
+	local tiTweenInfo = TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+
+	local function tiSetText(label, text)
+		text = tostring(text)
+		if tiTextCache[label] == text then return end
+		tiTextCache[label] = text
+		tiTextToken[label] = (tiTextToken[label] or 0) + 1
+		local token = tiTextToken[label]
+
+		task.spawn(function()
+			if not label or not label.Parent then return end
+			local out = TargetInfoTweenService:Create(label, TweenInfo.new(0.08, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {TextTransparency = 1})
+			out:Play()
+			out.Completed:Wait()
+			if tiTextToken[label] ~= token or not label.Parent then return end
+			label.Text = text
+			TargetInfoTweenService:Create(label, tiTweenInfo, {TextTransparency = 0}):Play()
+		end)
+	end
+
+	local function tiSetBar(ratio)
+		ratio = math.clamp(ratio or 0, 0, 1)
+		if math.abs(tiLastBarRatio - ratio) < 0.005 then return end
+		tiLastBarRatio = ratio
+		TargetInfoTweenService:Create(tiBarFill, tiTweenInfo, {
+			Size = UDim2.fromOffset(math.floor(TI_BAR_W * ratio), 10),
+			BackgroundColor3 = ti_bar_color
+		}):Play()
+	end
+
+	-- RaycastParams переиспользуем, не создаём каждый кадр
+	local _ti_vis_params = RaycastParams.new()
+	_ti_vis_params.FilterType = Enum.RaycastFilterType.Exclude
+	local _ti_vis_acc = 0  -- rate-limit target info до 20 раз/сек
+	local _ti_last_char = nil
+
+	cheat.utility.new_renderstepped(LPH_NO_VIRTUALIZE(function(delta)
+		local mp   = UserInputService:GetMouseLocation()
+		local down = UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1)
+
+		if down and not tiWas and ti_enabled then
+			local ap = tiCard.AbsolutePosition
+			local as = tiCard.AbsoluteSize
+			if mp.X>=ap.X and mp.X<=ap.X+as.X and mp.Y>=ap.Y and mp.Y<=ap.Y+as.Y then
+				tiDrag = true; tiDS = mp
+				tiDO   = Vector2.new(tiCard.Position.X.Offset, tiCard.Position.Y.Offset)
+			end
+		end
+		if not down then tiDrag = false end
+		if tiDrag then
+			local d = mp - tiDS
+			ti_x = tiDO.X + d.X
+			ti_y = tiDO.Y + d.Y
+			TargetInfoTweenService:Create(tiCard, TweenInfo.new(0.65, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out), {
+				Position = UDim2.fromOffset(ti_x, ti_y)
+			}):Play()
+			Library.Flags["ti_pos_x"] = math.floor(ti_x + 0.5)
+			Library.Flags["ti_pos_y"] = math.floor(ti_y + 0.5)
+		end
+		tiWas = down
+
+		-- обновляем цвет accent от темы
+		if Library and Library.Theme then
+			tiAccent.BackgroundColor3 = Library.Theme["Accent"] or Color3.fromRGB(176,176,209)
+		end
+
+		tiAccentGlow.ImageColor3 = tiAccent.BackgroundColor3
+		tiAccentGlow.Visible = ti_line_glow and tiCard.Visible
+
+		local menuOpen = false
+		pcall(function()
+			menuOpen = ui and ui.window and ui.window.__new and ui.window.__new.IsOpen or false
+		end)
+
+		-- Когда меню открыто — показываем preview с фейковыми данными, чтобы удобно настраивать Target Info.
+		-- Когда меню закрыто — preview пропадает, и Target Info показывается только при настоящем target_player.
+		local hasRealTarget = target_player ~= nil
+		local previewMode = menuOpen
+		tiCard.Visible = ti_enabled and (previewMode or hasRealTarget)
+		tiAccentGlow.Visible = ti_line_glow and tiCard.Visible
+		if not tiCard.Visible then return end
+
+		if previewMode then
+			lastAva = nil
+			tiAva.Visible = true
+			tiAva.Image = ""
+			tiSetText(tiVUser, "preview")
+			if ti_show_hp then
+				tiSetText(tiVHp, "78/100")
+				tiSetText(tiBarTxt, "78/100")
+				tiSetBar(0.78)
+			else
+				tiSetText(tiVHp, "-")
+				tiSetText(tiBarTxt, "")
+				tiSetBar(0)
+			end
+			tiSetText(tiVTool, ti_show_tool and "weapon" or "none")
+			tiSetText(tiVVis, "visible")
+			tiVVis.TextColor3 = Color3.fromRGB(80, 255, 80)
+			return
+		end
+
+		tiSetText(tiVUser, target_player.Name)
+		tiAva.Visible = true
+
+		if lastAva ~= target_player then
+			lastAva = target_player; tiAva.Image = ""
+			task.spawn(function()
+				local ok, img = pcall(function()
+					return Players:GetUserThumbnailAsync(target_player.UserId,
+						Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size100x100)
+				end)
+				if ok and type(img)=="string" and lastAva==target_player then
+					pcall(function() tiAva.Image = img end)
+				end
+			end)
+		end
+
+		if not target_player then return end
+
+		local char = target_player.Character
+		local hum  = char and char:FindFirstChildOfClass("Humanoid")
+		if hum and ti_show_hp then
+			local hp    = math.floor(hum.Health)
+			local maxhp = math.floor(math.max(hum.MaxHealth,1))
+			local ratio = math.clamp(hum.Health/maxhp, 0, 1)
+			local str   = hp.."/"..maxhp
+			tiSetText(tiVHp, str); tiSetText(tiBarTxt, str)
+			tiSetBar(ratio)
+		else
+			tiSetText(tiVHp, "-")
+			tiSetText(tiBarTxt, "")
+			tiSetBar(0)
+		end
+		if char and ti_show_tool then
+			local tool = char:FindFirstChildOfClass("Tool")
+			tiSetText(tiVTool, tool and tool.Name or "none")
+		else
+			tiSetText(tiVTool, "none")
+		end
+		-- Видимость цели — raycast с переиспользуемым params
+		if char and target_part then
+			local vis_origin = Camera.CFrame.Position
+			local vis_dir = (target_part.Position - vis_origin)
+			local filter = {}
+			if LocalPlayer.Character then table.insert(filter, LocalPlayer.Character) end
+			if char then table.insert(filter, char) end
+			_ti_vis_params.FilterDescendantsInstances = filter
+			local vis_result = workspace:Raycast(vis_origin, vis_dir, _ti_vis_params)
+			if vis_result then
+				tiSetText(tiVVis, "not visible")
+				tiVVis.TextColor3 = Color3.fromRGB(255, 80, 80)
+			else
+				tiSetText(tiVVis, "visible")
+				tiVVis.TextColor3 = Color3.fromRGB(80, 255, 80)
+			end
+		else
+			tiSetText(tiVVis, "no target")
+			tiVVis.TextColor3 = Color3.fromRGB(134, 134, 134)
+		end
+	end))
+
+	-- Target Info UI
+	tisec:Toggle({Name = "Enabled", Value = false, Flag = "ti_enabled", Callback = function(bool)
+		ti_enabled = bool
+	end})
+	tisec:Toggle({Name = "Line glow", Value = false, Flag = "ti_line_glow", Callback = function(bool)
+		ti_line_glow = bool
+	end})
+	tisec:Toggle({Name = "Show HP bar", Value = true, Flag = "ti_show_hp", Callback = function(bool)
+		ti_show_hp = bool
+	end}):Colorpicker({Name = "HP bar color", Default = ti_bar_color, Value = ti_bar_color, Usealpha = false, Flag = "ti_bar_color", Callback = function(color)
+		ti_bar_color = color.c
+		TargetInfoTweenService:Create(tiBarFill, tiTweenInfo, {BackgroundColor3 = ti_bar_color}):Play()
+	end})
+	tisec:Toggle({Name = "Show tool", Value = true, Flag = "ti_show_tool", Callback = function(bool)
+		ti_show_tool = bool
+	end})
+
+	-- ---- HITMARKERS ----
+	-- ============================================================
+	--  3D HITMARKER — плавающие цифры урона в мире
+	-- ============================================================
+
+	-- Пул Line-объектов: по 4 линии на каждый крестик, макс 6 одновременных крестиков
+	local HM_MAX_CROSSES = 6
+	local HM_POOL_SIZE   = HM_MAX_CROSSES * 4  -- 24 линии
+	local hm_pool = {}
+	for i = 1, HM_POOL_SIZE do
+		hm_pool[i] = cheat.utility.new_drawing("Line", {
+			Visible   = false,
+			Color     = Color3.new(1, 1, 1),
+			Thickness = 2,
+			ZIndex    = 15,
+			From      = Vector2.new(0, 0),
+			To        = Vector2.new(0, 0),
+		})
+	end
+
+	cheat.utility.new_renderstepped(LPH_NO_VIRTUALIZE(function(delta)
+		if not hm_enabled then
+			-- скрываем все линии
+			for i = 1, HM_POOL_SIZE do hm_pool[i].Visible = false end
+			return
+		end
+
+		local now = tick()
+
+		-- Фильтруем живые хиты
+		local alive = {}
+		for _, entry in ipairs(hm_queue) do
+			if now - entry.born < hm_duration then
+				table.insert(alive, entry)
+			end
+		end
+		hm_queue = alive
+
+		-- Скрываем все линии пула, потом рисуем нужные
+		for i = 1, HM_POOL_SIZE do hm_pool[i].Visible = false end
+
+		-- Каждый хит — отдельный крестик × в замороженной точке попадания
+		local sq2 = 0.7071  -- 1/sqrt(2)
+		local dirs45 = {
+			Vector2.new( sq2,  sq2),
+			Vector2.new(-sq2,  sq2),
+			Vector2.new(-sq2, -sq2),
+			Vector2.new( sq2, -sq2),
+		}
+
+		local drawn = 0  -- сколько крестиков нарисовано (макс = HM_POOL_SIZE / 4)
+
+		for _, entry in ipairs(hm_queue) do
+			if drawn * 4 + 4 > HM_POOL_SIZE then break end
+
+			local age = now - entry.born
+			local t   = age / hm_duration   -- 0..1
+			-- Анимация: быстрое появление (0..15%) -> видно (15..80%) -> fade out (80..100%)
+			local tr
+			if t < 0.15 then
+				-- появление: быстро от прозрачного к видимому
+				tr = 1 - (t / 0.15)
+			elseif t < 0.80 then
+				-- полностью видно
+				tr = 0
+			else
+				-- исчезновение: плавно от видимого к прозрачному
+				tr = (t - 0.80) / 0.20
+			end
+
+			-- Проецируем ЗАМОРОЖЕННУЮ позицию хита на экран
+			local pos3d, onScreen = Camera:WorldToViewportPoint(entry.pos)
+			if not onScreen then continue end
+
+			local cx = pos3d.X
+			local cy = pos3d.Y
+
+			-- Размер крестика зависит от расстояния
+			local dist = math.max(pos3d.Z, 1)
+			local csz  = math.clamp(hm_size * 30 / dist, 5, 22)
+			local cgap = math.clamp(hm_size * 6 / dist, 2, 8)
+
+			-- Рисуем 4 луча крестика ×
+			for i, dir in ipairs(dirs45) do
+				local li = drawn * 4 + i
+				hm_pool[li].From         = Vector2.new(cx, cy) + dir * cgap
+				hm_pool[li].To           = Vector2.new(cx, cy) + dir * (cgap + csz)
+				hm_pool[li].Color        = hm_color
+				hm_pool[li].Thickness    = hm_thick
+				hm_pool[li].Transparency = tr
+				hm_pool[li].Visible      = true
+			end
+
+			drawn = drawn + 1
+		end
+	end))
+
+	-- Kill Effect (теперь как Death Effect - 3D частицы)
+	ke_enabled  = false
+
+	local KE_CONFIG = {
+		MAIN_COLOR    = Color3.fromRGB(255, 255, 255),
+		BRIGHT_COLOR  = Color3.fromRGB(255, 255, 255),
+		GLOW_COLOR    = Color3.fromRGB(255, 255, 255),
+		PARTICLE_COUNT = 40,
+		PARTICLE_SIZE_MIN = 0.15,
+		PARTICLE_SIZE_MAX = 0.4,
+		PARTICLE_SPEED = 35,
+		PARTICLE_LIFETIME = 0.7,
+		LIGHT_CHANCE  = 0.3,
+		LIGHT_BRIGHTNESS = 1,
+		LIGHT_RANGE   = 2.5,
+		SPARKLE_COUNT = 8,
+		STAR_COUNT    = 20,
+		RAY_COUNT     = 10,
+		RAY_LENGTH    = 6,
+		RAY_LIFETIME  = 0.35,
+	}
+
+	local TweenSvc2 = game:GetService("TweenService")
+
+	local function ke_particle(position)
+		local sz = KE_CONFIG.PARTICLE_SIZE_MIN + math.random() * (KE_CONFIG.PARTICLE_SIZE_MAX - KE_CONFIG.PARTICLE_SIZE_MIN)
+		local part = Instance.new("Part")
+		part.Shape = Enum.PartType.Ball; part.Size = Vector3.new(sz,sz,sz)
+		part.Material = Enum.Material.Neon
+		part.Color = math.random() > 0.3 and KE_CONFIG.MAIN_COLOR or KE_CONFIG.BRIGHT_COLOR
+		part.Anchored = false; part.CanCollide = false; part.CastShadow = false
+		part.Position = position + Vector3.new((math.random()-0.5)*2,(math.random()-0.5)*2+1,(math.random()-0.5)*2)
+		part.Parent = workspace
+		local light
+		if math.random() < KE_CONFIG.LIGHT_CHANCE then
+			light = Instance.new("PointLight")
+			light.Brightness = KE_CONFIG.LIGHT_BRIGHTNESS; light.Range = KE_CONFIG.LIGHT_RANGE
+			light.Color = KE_CONFIG.GLOW_COLOR; light.Parent = part
+		end
+		local dir = Vector3.new((math.random()-0.5)*2,(math.random()-0.5)*2,(math.random()-0.5)*2).Unit
+		local bv = Instance.new("BodyVelocity")
+		bv.Velocity = dir*(KE_CONFIG.PARTICLE_SPEED*(0.5+math.random()*0.8)); bv.MaxForce = Vector3.new(1e6,1e6,1e6); bv.Parent = part
+		task.delay(0.1, function() if bv and bv.Parent then TweenSvc2:Create(bv,TweenInfo.new(0.4),{Velocity=Vector3.new(0,-5,0)}):Play() end end)
+		local lt = KE_CONFIG.PARTICLE_LIFETIME*(0.7+math.random()*0.6)
+		TweenSvc2:Create(part,TweenInfo.new(lt,Enum.EasingStyle.Quad,Enum.EasingDirection.In),{Transparency=1,Size=Vector3.new(0.02,0.02,0.02)}):Play()
+		if light then TweenSvc2:Create(light,TweenInfo.new(lt),{Brightness=0,Range=0}):Play() end
+		task.delay(lt+0.05, function() if part then part:Destroy() end end)
+	end
+
+	local function ke_star(position)
+		local part = Instance.new("Part")
+		part.Size = Vector3.new(0.3,0.3,0.3); part.Transparency = 1; part.Anchored = true
+		part.CanCollide = false; part.CastShadow = false
+		part.Position = position + Vector3.new(0,1,0); part.Parent = workspace
+		local att = Instance.new("Attachment"); att.Parent = part
+		local em = Instance.new("ParticleEmitter")
+		em.Texture = "rbxassetid://2273224484"
+		em.Color = ColorSequence.new(Color3.fromRGB(255,255,255))
+		em.Size = NumberSequence.new({NumberSequenceKeypoint.new(0,0),NumberSequenceKeypoint.new(0.2,0.6),NumberSequenceKeypoint.new(0.7,0.4),NumberSequenceKeypoint.new(1,0)})
+		em.Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0,0.2),NumberSequenceKeypoint.new(0.5,0),NumberSequenceKeypoint.new(1,1)})
+		em.Lifetime = NumberRange.new(0.7,1.2); em.Rate = 0; em.Speed = NumberRange.new(10,22)
+		em.SpreadAngle = Vector2.new(180,180); em.Rotation = NumberRange.new(0,360)
+		em.RotSpeed = NumberRange.new(-100,100); em.LightEmission = 1; em.LightInfluence = 0
+		em.Acceleration = Vector3.new(0,-10,0); em.Orientation = Enum.ParticleOrientation.FacingCamera; em.Parent = att
+		em:Emit(KE_CONFIG.STAR_COUNT)
+		local l = Instance.new("PointLight"); l.Brightness = 2; l.Range = 6; l.Color = KE_CONFIG.MAIN_COLOR; l.Parent = part
+		TweenSvc2:Create(l,TweenInfo.new(0.8),{Brightness=0,Range=0}):Play()
+		task.delay(1.5, function() if part then part:Destroy() end end)
+	end
+
+	local function ke_sparkle(position)
+		local part = Instance.new("Part")
+		part.Size = Vector3.new(0.2,0.2,0.2); part.Anchored = true; part.CanCollide = false
+		part.CastShadow = false; part.Transparency = 1
+		part.Position = position + Vector3.new((math.random()-0.5)*8,(math.random()-0.5)*6+1,(math.random()-0.5)*8)
+		part.Parent = workspace
+		local bb = Instance.new("BillboardGui"); bb.Size = UDim2.new(0,0,0,0); bb.AlwaysOnTop = false; bb.LightInfluence = 0; bb.Parent = part
+		local img = Instance.new("ImageLabel"); img.Size = UDim2.new(1,0,1,0); img.BackgroundTransparency = 1
+		pcall(function() img.Image = "rbxassetid://241876428" end)
+		pcall(function() img.ImageColor3 = KE_CONFIG.BRIGHT_COLOR end)
+		img.Parent = bb
+		local ts = 80+math.random(0,60)
+		TweenSvc2:Create(bb,TweenInfo.new(0.15,Enum.EasingStyle.Back,Enum.EasingDirection.Out),{Size=UDim2.new(0,ts,0,ts)}):Play()
+		task.delay(0.2,function()
+			TweenSvc2:Create(bb,TweenInfo.new(0.4),{Size=UDim2.new(0,0,0,0)}):Play()
+			TweenSvc2:Create(img,TweenInfo.new(0.4),{ImageTransparency=1}):Play()
+			task.delay(0.45,function() if part then part:Destroy() end end)
+		end)
+	end
+
+	local function ke_ray(position, angle)
+		local length = KE_CONFIG.RAY_LENGTH*(0.7+math.random()*0.6)
+		local ray = Instance.new("Part"); ray.Size = Vector3.new(0.1,0.1,0.5)
+		ray.Material = Enum.Material.Neon; ray.Color = KE_CONFIG.BRIGHT_COLOR
+		ray.Anchored = true; ray.CanCollide = false; ray.CastShadow = false; ray.Transparency = 0.1
+		local dir = Vector3.new(math.cos(angle)*math.cos(math.random()*math.pi-math.pi/2),math.sin(math.random()*math.pi-math.pi/2),math.sin(angle)*math.cos(math.random()*math.pi-math.pi/2)).Unit
+		ray.CFrame = CFrame.lookAt(position,position+dir)*CFrame.new(0,0,-length/2)
+		ray.Size = Vector3.new(0.1,0.1,length); ray.Parent = workspace
+		TweenSvc2:Create(ray,TweenInfo.new(KE_CONFIG.RAY_LIFETIME,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),{Size=Vector3.new(0.01,0.01,length*1.5),Transparency=1}):Play()
+		task.delay(KE_CONFIG.RAY_LIFETIME+0.05,function() if ray then ray:Destroy() end end)
+	end
+
+	local function ke_createEffect(position)
+		if not ke_enabled then return end
+		for i = 1, KE_CONFIG.PARTICLE_COUNT do task.spawn(ke_particle, position) end
+		ke_star(position)
+		for i = 1, KE_CONFIG.SPARKLE_COUNT do task.spawn(function() task.wait(math.random()*0.2); ke_sparkle(position) end) end
+		for i = 1, KE_CONFIG.RAY_COUNT do task.spawn(function() ke_ray(position,(i/KE_CONFIG.RAY_COUNT)*math.pi*2+math.random()*0.3) end) end
+	end
+
+	-- Hitmarker UI
+	do
+		local sec = hmsec
+		-- ---- Hitmarker (крестик при попадании) ----
+		sec:Toggle({Name = "Hitmarker", Value = false, Flag = "hm_enabled", Callback = function(bool)
+			hm_enabled = bool
+		end}):Colorpicker({Name = "Hitmarker color", Value = Color3.new(1,1,1), Usealpha = false, Flag = "hm_color", Callback = function(color)
+			hm_color = color.c
+		end})
+		sec:Slider({Name = "Hitmarker size", Min = 3, Max = 30, Float = 1, Value = 8, Flag = "hm_size", Callback = function(v)
+			hm_size = v
+		end})
+		sec:Slider({Name = "Hitmarker thickness", Min = 1, Max = 8, Float = 1, Value = 2, Flag = "hm_thick", Callback = function(v)
+			hm_thick = v
+		end})
+		sec:Slider({Name = "Hitmarker duration (ms)", Min = 200, Max = 8000, Float = 100, Value = 3000, Flag = "hm_duration", Callback = function(v)
+			hm_duration = v / 1000
+		end})
+
+		-- ---- Kill effect (теперь как Death Effect) ----
+		sec:Toggle({Name = "Kill particles", Value = false, Flag = "ke_enabled", Callback = function(bool)
+			ke_enabled = bool
+		end}):Colorpicker({Name = "Main color", Value = Color3.fromRGB(255,255,255), Usealpha = false, Flag = "ke_main_color", Callback = function(color)
+			KE_CONFIG.MAIN_COLOR = color.c
+		end})
+		local ke_use_bright = false
+		do
+			local t = sec:Toggle({Name = "Secondary color", Value = false, Flag = "ke_bright_tog", Callback = function(bool)
+				ke_use_bright = bool
+				if not bool then
+					KE_CONFIG.BRIGHT_COLOR = KE_CONFIG.MAIN_COLOR
+				else
+					if Library and Library.Flags and Library.Flags["ke_bright_color"] then
+						KE_CONFIG.BRIGHT_COLOR = Library.Flags["ke_bright_color"].Color or KE_CONFIG.MAIN_COLOR
+					end
+				end
+			end})
+			t:Colorpicker({Name = "Secondary color", Value = Color3.fromRGB(255,255,255), Usealpha = false, Flag = "ke_bright_color", Callback = function(color)
+				if ke_use_bright then
+					KE_CONFIG.BRIGHT_COLOR = color.c
+				end
+			end})
+		end
+
+		sec:Slider({Name = "Ball count", Min = 5, Max = 80, Float = 1, Value = 40, Flag = "ke_particle_count", Callback = function(v)
+			KE_CONFIG.PARTICLE_COUNT = v
+		end})
+		sec:Slider({Name = "Ball speed", Min = 5, Max = 80, Float = 1, Value = 35, Flag = "ke_particle_speed", Callback = function(v)
+			KE_CONFIG.PARTICLE_SPEED = v
+		end})
+		sec:Slider({Name = "Ball lifetime", Min = 1, Max = 20, Float = 1, Value = 7, Flag = "ke_particle_life", Callback = function(v)
+			KE_CONFIG.PARTICLE_LIFETIME = v / 10
+		end})
+		sec:Slider({Name = "Ray count", Min = 0, Max = 20, Float = 1, Value = 10, Flag = "ke_ray_count", Callback = function(v)
+			KE_CONFIG.RAY_COUNT = v
+		end})
+		sec:Slider({Name = "Ray length", Min = 1, Max = 20, Float = 1, Value = 6, Flag = "ke_ray_length", Callback = function(v)
+			KE_CONFIG.RAY_LENGTH = v
+		end})
+		sec:Slider({Name = "Sparkle count", Min = 0, Max = 20, Float = 1, Value = 8, Flag = "ke_sparkle_count", Callback = function(v)
+			KE_CONFIG.SPARKLE_COUNT = v
+		end})
+		sec:Slider({Name = "Star count", Min = 0, Max = 50, Float = 1, Value = 20, Flag = "ke_star_count", Callback = function(v)
+			KE_CONFIG.STAR_COUNT = v
+		end})
+		sec:Button({Name = "Test kill effect", Callback = function()
+			-- Находим ближайшего игрока
+			local closest, dist = nil, math.huge
+			local lp = game:GetService("Players").LocalPlayer
+			local camPos = workspace.CurrentCamera.CFrame.Position
+			for _, plr in game:GetService("Players"):GetPlayers() do
+				if plr ~= lp and plr.Character then
+					local hrp = plr.Character:FindFirstChild("HumanoidRootPart") or plr.Character:FindFirstChild("Head")
+					if hrp then
+						local d = (hrp.Position - camPos).Magnitude
+						if d < dist then
+							dist = d
+							closest = plr
+						end
+					end
+				end
+			end
+			if closest and closest.Character then
+				local root = closest.Character:FindFirstChild("HumanoidRootPart") or closest.Character:FindFirstChild("Head")
+				if root then
+					local was = ke_enabled
+					ke_enabled = true
+					ke_createEffect(root.Position + Vector3.new(0,2,0))
+					ke_enabled = was
+					Library.Notification("Kill effect test on " .. closest.Name, 2)
+				end
+			else
+				Library.Notification("No players found", 2)
+			end
+		end})
+	end
+
+	-- ========== DEATH EFFECT (розовые частицы) ==========
+	local de_enabled = false
+
+	local DE_CONFIG = {
+		MAIN_COLOR    = Color3.fromRGB(255, 100, 200),
+		BRIGHT_COLOR  = Color3.fromRGB(255, 200, 230),
+		GLOW_COLOR    = Color3.fromRGB(255, 50, 150),
+		PARTICLE_COUNT = 40,
+		PARTICLE_SIZE_MIN = 0.15,
+		PARTICLE_SIZE_MAX = 0.4,
+		PARTICLE_SPEED = 35,
+		PARTICLE_LIFETIME = 0.7,
+		LIGHT_CHANCE  = 0.3,
+		LIGHT_BRIGHTNESS = 1,
+		LIGHT_RANGE   = 2.5,
+		SPARKLE_COUNT = 8,
+		STAR_COUNT    = 20,
+		RAY_COUNT     = 10,
+		RAY_LENGTH    = 6,
+		RAY_LIFETIME  = 0.35,
+		AFFECT_OTHERS = true,
+		AFFECT_SELF   = true,
+	}
+
+	local TweenSvc2 = game:GetService("TweenService")
+
+	local function de_particle(position)
+		local sz = DE_CONFIG.PARTICLE_SIZE_MIN + math.random() * (DE_CONFIG.PARTICLE_SIZE_MAX - DE_CONFIG.PARTICLE_SIZE_MIN)
+		local part = Instance.new("Part")
+		part.Shape = Enum.PartType.Ball; part.Size = Vector3.new(sz,sz,sz)
+		part.Material = Enum.Material.Neon
+		part.Color = math.random() > 0.3 and DE_CONFIG.MAIN_COLOR or DE_CONFIG.BRIGHT_COLOR
+		part.Anchored = false; part.CanCollide = false; part.CastShadow = false
+		part.Position = position + Vector3.new((math.random()-0.5)*2,(math.random()-0.5)*2+1,(math.random()-0.5)*2)
+		part.Parent = workspace
+		local light
+		if math.random() < DE_CONFIG.LIGHT_CHANCE then
+			light = Instance.new("PointLight")
+			light.Brightness = DE_CONFIG.LIGHT_BRIGHTNESS; light.Range = DE_CONFIG.LIGHT_RANGE
+			light.Color = DE_CONFIG.GLOW_COLOR; light.Parent = part
+		end
+		local dir = Vector3.new((math.random()-0.5)*2,(math.random()-0.5)*2,(math.random()-0.5)*2).Unit
+		local bv = Instance.new("BodyVelocity")
+		bv.Velocity = dir*(DE_CONFIG.PARTICLE_SPEED*(0.5+math.random()*0.8)); bv.MaxForce = Vector3.new(1e6,1e6,1e6); bv.Parent = part
+		task.delay(0.1, function() if bv and bv.Parent then TweenSvc2:Create(bv,TweenInfo.new(0.4),{Velocity=Vector3.new(0,-5,0)}):Play() end end)
+		local lt = DE_CONFIG.PARTICLE_LIFETIME*(0.7+math.random()*0.6)
+		TweenSvc2:Create(part,TweenInfo.new(lt,Enum.EasingStyle.Quad,Enum.EasingDirection.In),{Transparency=1,Size=Vector3.new(0.02,0.02,0.02)}):Play()
+		if light then TweenSvc2:Create(light,TweenInfo.new(lt),{Brightness=0,Range=0}):Play() end
+		task.delay(lt+0.05, function() if part then part:Destroy() end end)
+	end
+
+	local function de_star(position)
+		local part = Instance.new("Part")
+		part.Size = Vector3.new(0.3,0.3,0.3); part.Transparency = 1; part.Anchored = true
+		part.CanCollide = false; part.CastShadow = false
+		part.Position = position + Vector3.new(0,1,0); part.Parent = workspace
+		local att = Instance.new("Attachment"); att.Parent = part
+		local em = Instance.new("ParticleEmitter")
+		em.Texture = "rbxassetid://2273224484"
+		em.Color = ColorSequence.new(Color3.fromRGB(255,255,255))
+		em.Size = NumberSequence.new({NumberSequenceKeypoint.new(0,0),NumberSequenceKeypoint.new(0.2,0.6),NumberSequenceKeypoint.new(0.7,0.4),NumberSequenceKeypoint.new(1,0)})
+		em.Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0,0.2),NumberSequenceKeypoint.new(0.5,0),NumberSequenceKeypoint.new(1,1)})
+		em.Lifetime = NumberRange.new(0.7,1.2); em.Rate = 0; em.Speed = NumberRange.new(10,22)
+		em.SpreadAngle = Vector2.new(180,180); em.Rotation = NumberRange.new(0,360)
+		em.RotSpeed = NumberRange.new(-100,100); em.LightEmission = 1; em.LightInfluence = 0
+		em.Acceleration = Vector3.new(0,-10,0); em.Orientation = Enum.ParticleOrientation.FacingCamera; em.Parent = att
+		em:Emit(DE_CONFIG.STAR_COUNT)
+		local l = Instance.new("PointLight"); l.Brightness = 2; l.Range = 6; l.Color = DE_CONFIG.MAIN_COLOR; l.Parent = part
+		TweenSvc2:Create(l,TweenInfo.new(0.8),{Brightness=0,Range=0}):Play()
+		task.delay(1.5, function() if part then part:Destroy() end end)
+	end
+
+	local function de_sparkle(position)
+		local part = Instance.new("Part")
+		part.Size = Vector3.new(0.2,0.2,0.2); part.Anchored = true; part.CanCollide = false
+		part.CastShadow = false; part.Transparency = 1
+		part.Position = position + Vector3.new((math.random()-0.5)*8,(math.random()-0.5)*6+1,(math.random()-0.5)*8)
+		part.Parent = workspace
+		local bb = Instance.new("BillboardGui"); bb.Size = UDim2.new(0,0,0,0); bb.AlwaysOnTop = false; bb.LightInfluence = 0; bb.Parent = part
+		local img = Instance.new("ImageLabel"); img.Size = UDim2.new(1,0,1,0); img.BackgroundTransparency = 1
+		pcall(function() img.Image = "rbxassetid://241876428" end)
+		pcall(function() img.ImageColor3 = DE_CONFIG.BRIGHT_COLOR end)
+		img.Parent = bb
+		local ts = 80+math.random(0,60)
+		TweenSvc2:Create(bb,TweenInfo.new(0.15,Enum.EasingStyle.Back,Enum.EasingDirection.Out),{Size=UDim2.new(0,ts,0,ts)}):Play()
+		task.delay(0.2,function()
+			TweenSvc2:Create(bb,TweenInfo.new(0.4),{Size=UDim2.new(0,0,0,0)}):Play()
+			TweenSvc2:Create(img,TweenInfo.new(0.4),{ImageTransparency=1}):Play()
+			task.delay(0.45,function() if part then part:Destroy() end end)
+		end)
+	end
+
+	local function de_ray(position, angle)
+		local length = DE_CONFIG.RAY_LENGTH*(0.7+math.random()*0.6)
+		local ray = Instance.new("Part"); ray.Size = Vector3.new(0.1,0.1,0.5)
+		ray.Material = Enum.Material.Neon; ray.Color = DE_CONFIG.BRIGHT_COLOR
+		ray.Anchored = true; ray.CanCollide = false; ray.CastShadow = false; ray.Transparency = 0.1
+		local dir = Vector3.new(math.cos(angle)*math.cos(math.random()*math.pi-math.pi/2),math.sin(math.random()*math.pi-math.pi/2),math.sin(angle)*math.cos(math.random()*math.pi-math.pi/2)).Unit
+		ray.CFrame = CFrame.lookAt(position,position+dir)*CFrame.new(0,0,-length/2)
+		ray.Size = Vector3.new(0.1,0.1,length); ray.Parent = workspace
+		TweenSvc2:Create(ray,TweenInfo.new(DE_CONFIG.RAY_LIFETIME,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),{Size=Vector3.new(0.01,0.01,length*1.5),Transparency=1}):Play()
+		task.delay(DE_CONFIG.RAY_LIFETIME+0.05,function() if ray then ray:Destroy() end end)
+	end
+
+	local function de_createEffect(position)
+		if not de_enabled then return end
+		for i = 1, DE_CONFIG.PARTICLE_COUNT do task.spawn(de_particle, position) end
+		de_star(position)
+		for i = 1, DE_CONFIG.SPARKLE_COUNT do task.spawn(function() task.wait(math.random()*0.2); de_sparkle(position) end) end
+		for i = 1, DE_CONFIG.RAY_COUNT do task.spawn(function() de_ray(position,(i/DE_CONFIG.RAY_COUNT)*math.pi*2+math.random()*0.3) end) end
+	end
+	getgenv().__de_createEffect = de_createEffect
+
+	-- подключаем к смерти игроков
+	local function de_connectCharacter(character, isLocal)
+		local humanoid = character:FindFirstChildOfClass("Humanoid") or character:WaitForChild("Humanoid", 5)
+		if not humanoid then return end
+		humanoid.Died:Connect(function()
+			local root = character:FindFirstChild("HumanoidRootPart") or character:FindFirstChild("Torso") or character:FindFirstChild("UpperTorso")
+			if root then
+				local pos = root.Position
+				-- Death particles (3D)
+				if (isLocal and DE_CONFIG.AFFECT_SELF) or (not isLocal and DE_CONFIG.AFFECT_OTHERS) then
+					de_createEffect(pos)
+				end
+				-- Kill particles при убийстве любого врага (универсально, работает в любом режиме)
+				if not isLocal and ke_enabled then
+					ke_createEffect(pos)
+				end
+				-- Hitmarker при убийстве через Died — замороженная позиция
+				if not isLocal and hm_enabled then
+					table.insert(hm_queue, {
+						pos  = pos,
+						born = tick(),
+					})
+				end
+			end
+		end)
+		-- Kill particles fallback через HealthChanged (для игр где Died не реплицируется)
+		if not isLocal and humanoid then
+			local prevHealth = humanoid.Health
+			humanoid.HealthChanged:Connect(function(newHealth)
+				if newHealth <= 0 and prevHealth > 0 and ke_enabled then
+					local root = character:FindFirstChild("HumanoidRootPart")
+						or character:FindFirstChild("UpperTorso")
+						or character:FindFirstChild("Torso")
+						or character:FindFirstChild("Head")
+					if root and root.Parent then
+						ke_createEffect(root.Position + Vector3.new(0, 1.5, 0))
+					end
+				end
+				prevHealth = newHealth
+			end)
+		end
+	end
+
+	local de_Players = game:GetService("Players")
+	local de_LocalPlayer = de_Players.LocalPlayer
+	local function de_connectPlayer(player)
+		local isLocal = player == de_LocalPlayer
+		if player.Character then task.spawn(de_connectCharacter, player.Character, isLocal) end
+		player.CharacterAdded:Connect(function(char) de_connectCharacter(char, isLocal) end)
+	end
+	for _, p in ipairs(de_Players:GetPlayers()) do task.spawn(de_connectPlayer, p) end
+	de_Players.PlayerAdded:Connect(de_connectPlayer)
+
+	-- UI — Death Effect с кастомизацией каждого эффекта
+	do
+		local sec = hmsec
+
+		sec:Toggle({Name = "Death effect", Value = false, Flag = "de_enabled", Callback = function(bool)
+			de_enabled = bool
+		end}):Colorpicker({Name = "Main color", Value = Color3.fromRGB(255,100,200), Usealpha = false, Flag = "de_main_color", Callback = function(color)
+			DE_CONFIG.MAIN_COLOR = color.c
+		end})
+		local de_use_bright = false
+		do
+			local t = sec:Toggle({Name = "Secondary color", Value = false, Flag = "de_bright_tog", Callback = function(bool)
+				de_use_bright = bool
+				if not bool then
+					DE_CONFIG.BRIGHT_COLOR = DE_CONFIG.MAIN_COLOR
+				else
+					if Library and Library.Flags and Library.Flags["de_bright_color"] then
+						DE_CONFIG.BRIGHT_COLOR = Library.Flags["de_bright_color"].Color or DE_CONFIG.MAIN_COLOR
+					end
+				end
+			end})
+			t:Colorpicker({Name = "Secondary color", Value = Color3.fromRGB(255,200,230), Usealpha = false, Flag = "de_bright_color", Callback = function(color)
+				if de_use_bright then
+					DE_CONFIG.BRIGHT_COLOR = color.c
+				end
+			end})
+		end
+
+		sec:Slider({Name = "Ball count", Min = 5, Max = 80, Float = 1, Value = 40, Flag = "de_particle_count", Callback = function(v)
+			DE_CONFIG.PARTICLE_COUNT = v
+		end})
+		sec:Slider({Name = "Ball speed", Min = 5, Max = 80, Float = 1, Value = 35, Flag = "de_particle_speed", Callback = function(v)
+			DE_CONFIG.PARTICLE_SPEED = v
+		end})
+		sec:Slider({Name = "Ball lifetime", Min = 1, Max = 20, Float = 1, Value = 7, Flag = "de_particle_life", Callback = function(v)
+			DE_CONFIG.PARTICLE_LIFETIME = v / 10
+		end})
+		sec:Slider({Name = "Ray count", Min = 0, Max = 20, Float = 1, Value = 10, Flag = "de_ray_count", Callback = function(v)
+			DE_CONFIG.RAY_COUNT = v
+		end})
+		sec:Slider({Name = "Ray length", Min = 1, Max = 20, Float = 1, Value = 6, Flag = "de_ray_length", Callback = function(v)
+			DE_CONFIG.RAY_LENGTH = v
+		end})
+		sec:Slider({Name = "Sparkle count", Min = 0, Max = 20, Float = 1, Value = 8, Flag = "de_sparkle_count", Callback = function(v)
+			DE_CONFIG.SPARKLE_COUNT = v
+		end})
+		sec:Slider({Name = "Star count", Min = 0, Max = 50, Float = 1, Value = 20, Flag = "de_star_count", Callback = function(v)
+			DE_CONFIG.STAR_COUNT = v
+		end})
+		sec:Button({Name = "Test death effect", Callback = function()
+			local char = de_LocalPlayer.Character
+			if char then
+				local root = char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso")
+				if root then
+					local was = de_enabled
+					de_enabled = true
+					de_createEffect(root.Position)
+					de_enabled = was
+				end
+			end
+		end})
+	end
 end
 
 local aspect_ratio, aspect_ratio_x, aspect_ratio_y = false, 1, 1
@@ -7108,11 +10091,11 @@ do
 			{"Flags", "flags"},
 			{"Skeleton", "skeleton"},
 			} do
-			espsec:Toggle({Name = element[1], Value = false, Flag = `esp_{element[2]}`, Callback = function(bool)
+			espsec:Toggle({Name = element[1], Value = false, Flag = ("esp_" .. element[2]), Callback = function(bool)
 				enemy_sets[element[2]] = bool
 				cheat.EspLibrary.icaca()
-			end}):Colorpicker({Name = `{element[1]} color`, Value = Color3.new(1, 1, 1), Usealpha = true, Flag = `esp_{element[2]}_color`, Callback = function(color)
-				enemy_sets[`{element[2]}_color`] = {color.c, color.a}
+			end}):Colorpicker({Name = (element[1] .. " color"), Value = Color3.new(1, 1, 1), Usealpha = true, Flag = ("esp_" .. element[2] .. "_color"), Callback = function(color)
+				enemy_sets[element[2] .. "_color"] = {color.c, color.a}
 				cheat.EspLibrary.icaca()
 			end})
 		end
@@ -7125,15 +10108,54 @@ do
 		espsec:Toggle({Name = "Chams", Value = false, Flag = "esp_chams", Callback = function(bool)
 			enemy_sets.chams = bool
 			cheat.EspLibrary.icaca()
-		end})
-		espsec:Colorpicker({Name = "Chams color", Value = Color3.new(1, 1, 1), Usealpha = false, Flag = "esp_chams_color", Callback = function(color)
+		end}):Colorpicker({Name = "Chams color", Value = Library.Theme.accent or Color3.new(1, 1, 1), Usealpha = false, Flag = "esp_chams_color", Callback = function(color)
 			enemy_sets.chams_color = {color.c, color.a}
+			cheat.EspLibrary.icaca()
+		end})
+		espsec:Toggle({Name = "Highlight", Value = false, Flag = "esp_highlight", Callback = function(bool)
+			enemy_sets.highlight = bool
+			cheat.EspLibrary.icaca()
+		end}):Colorpicker({Name = "Highlight color", Value = Library.Theme.accent or Color3.new(1, 1, 1), Usealpha = true, Flag = "esp_highlight_color", Callback = function(color)
+			enemy_sets.highlight_color = {color.c, color.a}
+			cheat.EspLibrary.icaca()
+		end})
+		espsec:Dropdown({Name = "Chams style", Values = {"Glow", "Flat", "ForceField", "Glass", "Pulse", "Rainbow"}, Value = "Glow", Flag = "esp_chams_style", Multi = false, Callback = function(value)
+			enemy_sets.chams_style = value or "Glow"
 			cheat.EspLibrary.icaca()
 		end})
 		espsec:Slider({Name = "Chams glow factor", Min = 0, Max = 100, Float = 0.1, Value = 3, Flag = "esp_chams_glow_factor", Callback = function(int)
 			enemy_sets.chams_glow_factor = int
 			cheat.EspLibrary.icaca()
 		end})
+
+		local self_chams = cheat.EspLibrary.settings.self_chams
+
+		espsec:Toggle({Name = "Self chams", Value = false, Flag = "esp_self_chams", Callback = function(bool)
+			self_chams.enabled = bool
+			pcall(function() cheat.EspLibrary.update_self_chams() end)
+		end}):Colorpicker({Name = "Self chams color", Value = Library.Theme.accent or Color3.new(1, 1, 1), Usealpha = false, Flag = "esp_self_chams_color", Callback = function(color)
+			self_chams.color = {color.c, color.a}
+			pcall(function() cheat.EspLibrary.update_self_chams() end)
+		end})
+
+		espsec:Toggle({Name = "Self highlight", Value = false, Flag = "esp_self_highlight", Callback = function(bool)
+			self_chams.highlight = bool
+			pcall(function() cheat.EspLibrary.update_self_chams() end)
+		end}):Colorpicker({Name = "Self highlight color", Value = Library.Theme.accent or Color3.new(1, 1, 1), Usealpha = true, Flag = "esp_self_highlight_color", Callback = function(color)
+			self_chams.highlight_color = {color.c, color.a}
+			pcall(function() cheat.EspLibrary.update_self_chams() end)
+		end})
+
+		espsec:Dropdown({Name = "Self chams style", Values = {"Ocean Gel", "Glow", "Flat", "ForceField", "Glass", "Pulse", "Rainbow"}, Value = "Ocean Gel", Flag = "esp_self_chams_style", Multi = false, Callback = function(value)
+			self_chams.style = value or "Ocean Gel"
+			pcall(function() cheat.EspLibrary.update_self_chams() end)
+		end})
+
+		espsec:Slider({Name = "Self chams glow factor", Min = 0, Max = 100, Float = 0.1, Value = 3, Flag = "esp_self_chams_glow_factor", Callback = function(int)
+			self_chams.glow_factor = int
+			pcall(function() cheat.EspLibrary.update_self_chams() end)
+		end})
+
 	end
 	do
 		local player_list = cheat.player_list
@@ -7203,14 +10225,52 @@ do
 			enemy_main_sets.gradient_speed = int * 18
 			cheat.EspLibrary.icaca()
 		end})
-		setsec:Toggle({Name = "Holder spin", Value = false, Flag = "esp_holder_spin", Callback = function(bool)
-			enemy_main_sets.holder_spin = bool
+
+		setsec:Toggle({Name = "Arrow ESP", Value = false, Flag = "esp_arrow", Callback = function(bool)
+			enemy_sets.arrow = bool
 			cheat.EspLibrary.icaca()
 		end})
-		setsec:Slider({Name = "Holder speed", Min = -20, Max = 20, Float = 0.1, Value = 0, Flag = "esp_holder_speed", Callback = function(int)
-			enemy_main_sets.holder_speed = int * 18
+		setsec:Slider({Name = "Arrow max distance", Min = 0, Max = 1000, Float = 1, Value = 100, Flag = "esp_arrow_max_dist", Callback = function(int)
+			enemy_sets.arrow_max_dist = int
 			cheat.EspLibrary.icaca()
 		end})
+		setsec:Slider({Name = "Arrow radius", Min = 50, Max = 1000, Float = 1, Value = 200, Flag = "esp_arrow_radius", Callback = function(int)
+			enemy_sets.arrow_radius = int
+			cheat.EspLibrary.icaca()
+		end})
+		setsec:Dropdown({
+			Name = "Arrow elements",
+			Values = {"Health", "Name", "Distance", "Box", "Item"},
+			Value = {},
+			Multi = true,
+			Flag = "esp_arrow_elements",
+			Callback = function(val)
+				local map = {
+					["Health"] = "health", ["health"] = "health",
+					["Name"] = "name", ["name"] = "name",
+					["Distance"] = "distance", ["distance"] = "distance",
+					["Box"] = "box", ["box"] = "box",
+					["Item"] = "item", ["item"] = "item",
+				}
+				local normalized = {}
+				for _, item in val do
+					local mapped = map[item]
+					if mapped then table.insert(normalized, mapped) end
+				end
+				enemy_sets.arrow_elements = normalized
+				cheat.EspLibrary.icaca()
+			end
+		})
+		do
+			local toggle = setsec:Toggle({Name = "Custom arrow HP color", Value = false, Flag = "esp_arrow_hp_custom", Callback = function(bool)
+				enemy_sets.arrow_hp_color = bool and (Library.Flags["esp_arrow_hp_color"] and Library.Flags["esp_arrow_hp_color"].Color or Color3.fromRGB(64, 220, 90)) or nil
+			end})
+			toggle:Colorpicker({Name = "Arrow HP color", Value = Color3.fromRGB(64, 220, 90), Usealpha = false, Flag = "esp_arrow_hp_color", Callback = function(color)
+				if Library.Flags["esp_arrow_hp_custom"] then
+					enemy_sets.arrow_hp_color = color.c
+				end
+			end})
+		end
 	end
 	do
 		local old_fov = Camera.FieldOfView
@@ -7282,6 +10342,58 @@ do
 		bunnyhop = bool
 	end})
 
+	miscbox:Toggle({
+		Name = "Watermark",
+		Flag = "Watermark",
+		Value = true,
+		Callback = function(bool)
+			local wm = rawget(ui.window, "Watermark")
+			if wm and wm.SetVisibility then
+				pcall(wm.SetVisibility, wm, bool)
+			end
+			if ui.window._setGlow then
+				pcall(ui.window._setGlow, bool)
+			end
+		end
+	})
+
+	miscbox:Toggle({
+		Name = "Keybind list",
+		Flag = "Keybind list",
+		Value = true,
+		Callback = function(bool)
+			local kl = rawget(ui.window, "KeybindList")
+			if kl and kl.SetVisibility then
+				pcall(kl.SetVisibility, kl, bool)
+			end
+			if ui.window._setGlow then
+				pcall(ui.window._setGlow, bool)
+			end
+		end
+	})
+
+	miscbox:Toggle({
+		Name = "indicator glow",
+		Flag = "indicator_glow",
+		Value = false,
+		Callback = function(bool)
+			local inner = ui.window and ui.window.__new
+
+			-- Только встроенный Glow на линии (тот, который идёт по линии)
+			local wm = inner and rawget(inner, "Watermark")
+			if wm and wm.Items and wm.Items["Glow"] and wm.Items["Glow"].Instance then
+				wm.Items["Glow"].Instance.Visible = bool
+				wm.Items["Glow"].Instance.ImageTransparency = bool and 0.40 or 0.8
+			end
+
+			local kl = inner and rawget(inner, "KeybindList")
+			if kl and kl.Items and kl.Items["Glow"] and kl.Items["Glow"].Instance then
+				kl.Items["Glow"].Instance.Visible = bool
+				kl.Items["Glow"].Instance.ImageTransparency = bool and 0.40 or 0.8
+			end
+		end
+	})
+
 	movebox:Toggle({Name = "Speedhack", Value = false, Flag = "speedhack", Callback = function(bool)
 		speedhack = bool
 	end}):Keybind({Name = "Speedhack", Mode = "Toggle", Key = Enum.KeyCode.X, Value = false, Flag = "speedhack_key", Callback = function(bool)
@@ -7330,6 +10442,189 @@ do
 			hrp.AssemblyLinearVelocity = _Vector3new(1, 0, 1) * direction * speedhack_speed + hrp.AssemblyLinearVelocity.Y * Vector3.yAxis
 		end
 	end))
+end
+
+-- ============================================================
+--  CROSSHAIR  (4 линии, центр экрана, вращение + пульсация gap)
+-- ============================================================
+do
+	local chsec = ui.sections.crosshair
+
+	-- настройки
+	local ch_enabled  = false
+	local ch_size     = 10    -- длина каждой линии (px)
+	local ch_gap      = 3     -- зазор от центра (px)
+	local ch_thick    = 1     -- толщина линии
+	local ch_color    = Color3.new(1, 1, 1)
+	local ch_alpha    = 0     -- Drawing: 0 = непрозрачный, 1 = прозрачный
+	local ch_spin     = false -- вращение
+	local ch_speed    = 60    -- градусов в секунду
+	local ch_angle    = 0     -- текущий угол (degrees)
+	local ch_outline  = true  -- чёрная обводка
+
+	-- пульсация (сужение/разжатие gap)
+	local ch_pulse       = false  -- включена ли пульсация
+	local ch_pulse_speed = 2      -- циклов в секунду
+	local ch_pulse_min   = 1      -- минимальный gap при сжатии
+	local ch_pulse_max   = 12     -- максимальный gap при расширении
+	local ch_pulse_t     = 0      -- внутренний таймер [0..1]
+	local ch_pulse_dir   = 1      -- 1 = растём, -1 = сжимаемся
+
+	-- позиция crosshair (для плавного движения)
+	local ch_pos = Vector2.new(0, 0)
+	local ch_lerp_speed = 0.25    -- скорость сглаживания (меньше = плавнее)
+
+	-- создаём 4 линии + 4 обводки (по одной на каждую линию)
+	local lines = {}
+	local outlines = {}
+	local _zero = Vector2.new(0, 0)
+	for i = 1, 4 do
+		outlines[i] = cheat.utility.new_drawing("Line", {
+			Visible   = false,
+			Color     = Color3.new(0, 0, 0),
+			Thickness = ch_thick + 2,
+			ZIndex    = 1,
+			From      = _zero,
+			To        = _zero,
+		})
+		lines[i] = cheat.utility.new_drawing("Line", {
+			Visible   = false,
+			Color     = ch_color,
+			Thickness = ch_thick,
+			ZIndex    = 2,
+			From      = _zero,
+			To        = _zero,
+		})
+	end
+
+	-- helper: обновить все линии по текущим параметрам + угол
+	local function updateCrosshair(delta)
+		if not ch_enabled then
+			for i = 1, 4 do
+				lines[i].Visible    = false
+				outlines[i].Visible = false
+			end
+			return
+		end
+
+		-- вращение
+		if ch_spin then
+			ch_angle = (ch_angle + ch_speed * delta) % 360
+		end
+
+		-- пульсация gap (ping-pong)
+		local current_gap = ch_gap
+		if ch_pulse then
+			ch_pulse_t = ch_pulse_t + delta * ch_pulse_speed * ch_pulse_dir
+			if ch_pulse_t >= 1 then
+				ch_pulse_t = 1
+				ch_pulse_dir = -1
+			elseif ch_pulse_t <= 0 then
+				ch_pulse_t = 0
+				ch_pulse_dir = 1
+			end
+			-- плавный ease in-out через синус
+			local ease = (1 - math.cos(ch_pulse_t * math.pi)) * 0.5
+			current_gap = ch_pulse_min + (ch_pulse_max - ch_pulse_min) * ease
+		end
+
+		-- Определяем целевую позицию
+		local target_center = UserInputService:GetMouseLocation()
+
+		if aimbot_mode == "Silent" and target_part then
+			local pos, onScreen = _WorldToViewportPoint(Camera, target_part.Position)
+			if onScreen then
+				target_center = Vector2.new(pos.X, pos.Y)
+			end
+		end
+
+		-- Плавное движение (lerp)
+		ch_pos = ch_pos:Lerp(target_center, ch_lerp_speed)
+
+		local center = ch_pos
+		local rad    = math.rad(ch_angle)
+
+		local dirs = {
+			Vector2.new( math.cos(rad),  math.sin(rad)),
+			Vector2.new(-math.sin(rad),  math.cos(rad)),
+			Vector2.new(-math.cos(rad), -math.sin(rad)),
+			Vector2.new( math.sin(rad), -math.cos(rad)),
+		}
+
+		for i, dir in ipairs(dirs) do
+			local from = center + dir * current_gap
+			local to   = center + dir * (current_gap + ch_size)
+
+			outlines[i].From      = from
+			outlines[i].To        = to
+			outlines[i].Color     = Color3.new(0, 0, 0)
+			outlines[i].Thickness = ch_thick + 4
+			outlines[i].Transparency = 0
+			outlines[i].Visible   = ch_outline and ch_thick > 0
+
+			lines[i].From         = from
+			lines[i].To           = to
+			lines[i].Color        = ch_color
+			lines[i].Thickness    = ch_thick
+			lines[i].Transparency = ch_alpha
+			lines[i].Visible      = true
+		end
+	end
+
+	cheat.utility.new_renderstepped(LPH_NO_VIRTUALIZE(function(delta)
+		updateCrosshair(delta)
+	end))
+
+	-- UI
+	chsec:Toggle({Name = "Enabled", Value = false, Flag = "ch_enabled", Callback = function(bool)
+		ch_enabled = bool
+	end}):Colorpicker({Name = "Color", Value = Color3.new(1, 1, 1), Usealpha = true, Flag = "ch_color", Callback = function(color)
+		ch_color = color.c
+		ch_alpha = 1 - color.a
+	end})
+
+	chsec:Toggle({Name = "Outline", Value = true, Flag = "ch_outline", Callback = function(bool)
+		ch_outline = bool
+	end})
+
+	chsec:Slider({Name = "Length", Min = 1, Max = 60, Float = 1, Value = 10, Flag = "ch_size", Callback = function(v)
+		ch_size = v
+	end})
+
+	chsec:Slider({Name = "Gap", Min = 0, Max = 30, Float = 1, Value = 3, Flag = "ch_gap", Callback = function(v)
+		ch_gap = v
+	end})
+
+	chsec:Slider({Name = "Thickness", Min = 1, Max = 10, Float = 1, Value = 1, Flag = "ch_thick", Callback = function(v)
+		ch_thick = v
+	end})
+
+	chsec:Toggle({Name = "Spin", Value = false, Flag = "ch_spin", Callback = function(bool)
+		ch_spin = bool
+		if not bool then ch_angle = 0 end
+	end})
+
+	chsec:Slider({Name = "Spin speed", Min = 10, Max = 720, Float = 10, Value = 60, Flag = "ch_speed", Callback = function(v)
+		ch_speed = v
+	end})
+
+	chsec:Toggle({Name = "Pulse", Value = false, Flag = "ch_pulse", Callback = function(bool)
+		ch_pulse = bool
+		ch_pulse_t = 0
+		ch_pulse_dir = 1
+	end})
+
+	chsec:Slider({Name = "Pulse speed", Min = 0.1, Max = 10, Float = 0.1, Value = 2, Flag = "ch_pulse_speed", Callback = function(v)
+		ch_pulse_speed = v
+	end})
+
+	chsec:Slider({Name = "Pulse min gap", Min = 0, Max = 30, Float = 1, Value = 1, Flag = "ch_pulse_min", Callback = function(v)
+		ch_pulse_min = v
+	end})
+
+	chsec:Slider({Name = "Pulse max gap", Min = 1, Max = 60, Float = 1, Value = 12, Flag = "ch_pulse_max", Callback = function(v)
+		ch_pulse_max = v
+	end})
 end
 
 local desync_enabled, desync_enabled_key = false, false
@@ -7782,15 +11077,26 @@ do
 			ClockTime = 14.5,
 		}
 
+		local function capture_old_lighting()
+			for k, _ in old_lighting do
+				old_lighting[k] = Lighting[k]
+			end
+		end
+
 		local append_changes = function()
 			lighting_changing = true
 			for k, v in (lighting_changer and lighting_values or old_lighting) do
 				Lighting[k] = v
 			end
-			lighting_changing = false
+			-- PropertyChanged can fire slightly later; keep guard alive briefly so old_lighting
+			-- does not get overwritten by our custom values when toggling.
+			task.delay(0.08, function()
+				lighting_changing = false
+			end)
 		end
 
-		worldbox:Toggle({Name = 'Lighting changer', Flag = 'world_lighting_changer', Value = false, Callback = function(first)
+		worldbox:Toggle({Name = 'Lighting Changer', Flag = 'world_lighting_changer', Value = false, Callback = function(first)
+			if first then capture_old_lighting() end
 			lighting_changer = first
 			append_changes()
 		end})
@@ -7798,7 +11104,7 @@ do
 			lighting_values.Ambient = Value.c
 			append_changes()
 		end})
-		worldbox:Colorpicker({Name = 'OutdoorAmbient', Flag = 'world_lighting_outdoorambient', Value = Color3.fromRGB(70, 70, 70), Usealpha = false, Callback = function(Value)
+		worldbox:Colorpicker({Name = 'Outdoor Ambient', Flag = 'world_lighting_outdoorambient', Value = Color3.fromRGB(70, 70, 70), Usealpha = false, Callback = function(Value)
 			lighting_values.OutdoorAmbient = Value.c
 			append_changes()
 		end})
@@ -7806,33 +11112,33 @@ do
 			lighting_values.Brightness = State
 			append_changes()
 		end})
-		worldbox:Colorpicker({Name = 'ColorShift_Bottom', Flag = 'world_lighting_colorshift_bottom', Value = Color3.new(), Usealpha = false, Callback = function(Value)
+		worldbox:Colorpicker({Name = 'Color Shift Bottom', Flag = 'world_lighting_colorshift_bottom', Value = Color3.new(), Usealpha = false, Callback = function(Value)
 			lighting_values.ColorShift_Bottom = Value.c
 			append_changes()
 		end})
-		worldbox:Colorpicker({Name = 'ColorShift_Top', Flag = 'world_lighting_colorshift_top', Value = Color3.new(), Usealpha = false, Callback = function(Value)
-			lighting_values.ColorShift_Bottom = Value.c
+		worldbox:Colorpicker({Name = 'Color Shift Top', Flag = 'world_lighting_colorshift_top', Value = Color3.new(), Usealpha = false, Callback = function(Value)
+			lighting_values.ColorShift_Top = Value.c
 			append_changes()
 		end})
-		worldbox:Toggle({Name = 'GlobalShadows', Flag = 'world_lighting_globalshadows', Value = true, Callback = function(first)
+		worldbox:Toggle({Name = 'Global Shadows', Flag = 'world_lighting_globalshadows', Value = true, Callback = function(first)
 			lighting_values.GlobalShadows = first
 			append_changes()
 		end})
 
-		worldbox:Colorpicker({Name = 'FogColor', Flag = 'world_lighting_fogcolor', Value = Color3.fromRGB(192, 192, 192), Usealpha = false, Callback = function(Value)
+		worldbox:Colorpicker({Name = 'Fog Color', Flag = 'world_lighting_fogcolor', Value = Color3.fromRGB(192, 192, 192), Usealpha = false, Callback = function(Value)
 			lighting_values.FogColor = Value.c
 			append_changes()
 		end})
-		worldbox:Slider({Name = 'FogEnd', Flag = 'world_lighting_fogend', Value = 100,Min = 0,Max = 10000,Float = 100,Callback = function(State)
+		worldbox:Slider({Name = 'Fog End', Flag = 'world_lighting_fogend', Value = 100,Min = 0,Max = 10000,Float = 100,Callback = function(State)
 			lighting_values.FogEnd = State
 			append_changes()
 		end})
-		worldbox:Slider({Name = 'FogStart', Flag = 'world_lighting_fogstart', Value = 0,Min = 0,Max = 10000,Float = 100,Callback = function(State)
+		worldbox:Slider({Name = 'Fog Start', Flag = 'world_lighting_fogstart', Value = 0,Min = 0,Max = 10000,Float = 100,Callback = function(State)
 			lighting_values.FogStart = State
 			append_changes()
 		end})
 
-		worldbox:Slider({Name = 'ClockTime', Flag = 'world_lighting_clocktime', Value = 14.5,Min = 0,Max = 24,Float = 0.1,Callback = function(State)
+		worldbox:Slider({Name = 'Clock Time', Flag = 'world_lighting_clocktime', Value = 14.5,Min = 0,Max = 24,Float = 0.1,Callback = function(State)
 			lighting_values.ClockTime = State
 			append_changes()
 		end})
@@ -7851,11 +11157,13 @@ do
 	do
 		do
 			local atmosphere = _FindFirstChildOfClass(Lighting, "Atmosphere")
+			local atmosphere_existed = atmosphere ~= nil
 			if not atmosphere then
 				atmosphere = Instance.new("Atmosphere")
-				atmosphere.Parent = Lighting
-				--print('had to make a new atmosphere... collar is blue but reck is ned')
+				-- Do not parent it until Atmosphere Changer is enabled; otherwise fog appears even while disabled.
+				atmosphere.Parent = nil
 			end
+
 			local atmosphere_changer, atmosphere_changing = false, false
 			local old_atmosphere = {
 				Density = atmosphere.Density,
@@ -7874,15 +11182,52 @@ do
 				Haze = 1
 			}
 
-			local append_changes = function()
-				atmosphere_changing = true
-				for k, v in (atmosphere_changer and atmosphere_values or old_atmosphere) do
-					atmosphere[k] = v
+			local function ensure_atmosphere()
+				if atmosphere and atmosphere.Parent then return atmosphere end
+				if not atmosphere then
+					atmosphere = Instance.new("Atmosphere")
 				end
-				atmosphere_changing = false
+				atmosphere.Parent = Lighting
+				return atmosphere
 			end
 
-			miscbox:Toggle({Name = 'Atmosphere changer', Flag = 'world_atmosphere_changer', Value = false,Callback = function(first)
+			local function capture_old_atmosphere()
+				local current = _FindFirstChildOfClass(Lighting, "Atmosphere")
+				atmosphere_existed = current ~= nil
+				if current then
+					atmosphere = current
+					for k, _ in old_atmosphere do
+						old_atmosphere[k] = atmosphere[k]
+					end
+				end
+			end
+
+			local append_changes = function()
+				atmosphere_changing = true
+				if atmosphere_changer then
+					local atm = ensure_atmosphere()
+					for k, v in atmosphere_values do
+						atm[k] = v
+					end
+				else
+					if atmosphere_existed then
+						local atm = ensure_atmosphere()
+						for k, v in old_atmosphere do
+							atm[k] = v
+						end
+					else
+						local atm = _FindFirstChildOfClass(Lighting, "Atmosphere")
+						if atm then atm:Destroy() end
+						atmosphere = nil
+					end
+				end
+				task.delay(0.08, function()
+					atmosphere_changing = false
+				end)
+			end
+
+			miscbox:Toggle({Name = 'Atmosphere Changer', Flag = 'world_atmosphere_changer', Value = false,Callback = function(first)
+				if first then capture_old_atmosphere() end
 				atmosphere_changer = first
 				append_changes()
 			end})
@@ -7911,14 +11256,19 @@ do
 				append_changes()
 			end})
 
-			for _, method in {"Density", "Offset", "Color", "Decay", "Glare", "Haze"} do
-				atmosphere:GetPropertyChangedSignal(method):Connect(function()
-					if not atmosphere_changing then
-						old_atmosphere[method] = atmosphere[method]
-					end
-					if not atmosphere_changer then return end
-					atmosphere[method] = atmosphere_values[method]
-				end)
+			-- If the map did not originally have Atmosphere, we keep our created object unparented
+			-- while disabled. Some executors can treat that as nil here, so guard this connection block.
+			if atmosphere then
+				for _, method in {"Density", "Offset", "Color", "Decay", "Glare", "Haze"} do
+					atmosphere:GetPropertyChangedSignal(method):Connect(function()
+						if not atmosphere_changing and atmosphere and atmosphere.Parent then
+							old_atmosphere[method] = atmosphere[method]
+						end
+						if not atmosphere_changer then return end
+						local atm = ensure_atmosphere()
+						atm[method] = atmosphere_values[method]
+					end)
+				end
 			end
 		end
 		do
@@ -7935,9 +11285,9 @@ do
 				Size = bloom.Size,
 				Threshold = bloom.Threshold
 			}
-			local bloom_values = {
-				Enabled = 0.28,
-				Intensity = 1,
+		local bloom_values = {
+			Enabled = true,
+			Intensity = 1,
 				Size = 56,
 				Threshold = 2
 			}
@@ -7950,7 +11300,7 @@ do
 				bloom_changing = false
 			end
 
-			miscbox:Toggle({Name = 'Bloom changer', Flag = 'world_bloom_changer', Value = false,Callback = function(first)
+			miscbox:Toggle({Name = 'Bloom Changer', Flag = 'world_bloom_changer', Value = false,Callback = function(first)
 				bloom_changer = first
 				append_changes()
 			end})
@@ -7987,7 +11337,11 @@ end
 -- ---- settings page (встроенная в новую библиотеку) ----
 ui.window.Init()
 
+
+
 -- ---- hooks (silent aim / thirdperson) + ESP load ----
+-- Глобальный флаг Remove Recoil — устанавливается из Gun Mods do-блока выше
+-- (recoil_locked_cf и gun_remove_recoil объявлены там через upvalue)
 local __newindex; __newindex = hookmetamethod(game, "__newindex", newcclosure(LPH_NO_VIRTUALIZE(function(self, idx, val)
 	if self == Camera and idx == "CFrame" then
 		if thirdperson and thirdperson_key then
@@ -8000,25 +11354,67 @@ local __newindex; __newindex = hookmetamethod(game, "__newindex", newcclosure(LP
 				0, aspect_ratio_y, 0,
 				0, 0, 1
 			)
-		end;
+		end
+		-- Remove Recoil больше не трогает Camera.CFrame, чтобы не блокировать вращение камеры.
 	end
 	return __newindex(self, idx, val)
 end)))
 
 local __index; __index = hookmetamethod(game, '__index', newcclosure(LPH_NO_VIRTUALIZE(function(self, key)
+	-- Быстрый выход: 99.9% вызовов отсеиваются здесь (дешевле checkcaller)
+	if key ~= "CFrame" and key ~= "CoordinateFrame" and key ~= "Hit" and key ~= "Target" then
+		return __index(self, key)
+	end
+
 	if checkcaller() then return __index(self, key) end
-	if key == 'CFrame' and (self == hrp or self == head) and desync_enabled and desync_enabled_key and old_cframe then
-		if self == hrp then
-			return old_cframe or _CFramenew()
+
+	-- Десинк спуфит только HRP/Head — для любого другого объекта сразу выходим
+	if key == "CFrame" and self ~= hrp and self ~= head then
+		return __index(self, key)
+	end
+
+	-- ===== Desync CFrame spoofing =====
+	if key == "CFrame" then
+		if (self == hrp or self == head) and desync_enabled and desync_enabled_key and old_cframe then
+			if self == hrp then
+				return old_cframe or _CFramenew()
+			end
+			if self == head then
+				return old_cframe and old_cframe * _CFramenew(
+					0,
+					hrp.Size.Y / 2 + head.Size.Y / 2,
+					0
+				) or _CFramenew()
+			end
 		end
-		if self == head then
-			return old_cframe and old_cframe * _CFramenew(
-				0,
-				hrp.Size.Y / 2 + head.Size.Y / 2,
-				0
-			) or _CFramenew()
+		return __index(self, key)
+	end
+
+	-- ===== Camera.CoordinateFrame spoofing =====
+	if key == "CoordinateFrame" then
+		-- Спуфим только когда aimbot активно нажат (aimbot_enabled_key)
+		-- иначе камера Roblox (Popper/ZoomController) получает неправильный CFrame
+		if self == Camera and silent_methods["Camera"] and aimbot_mode == "Silent"
+			and aimbot_enabled and aimbot_enabled_key
+			and target_part and target_part.Parent then
+			local real_cf = __index(self, "CFrame")
+			return _CFramenew(real_cf.Position, target_part.Position)
+		end
+		return __index(self, key)
+	end
+
+	-- ===== Mouse.Hit / Mouse.Target spoofing =====
+	-- Спуфим только когда aimbot активно нажат
+	if self == Mouse and silent_methods["Mouse"] and aimbot_mode == "Silent"
+		and aimbot_enabled and aimbot_enabled_key
+		and target_part and target_part.Parent then
+		if key == "Hit" then
+			return _CFramenew(target_part.Position)
+		else
+			return target_part
 		end
 	end
+
 	return __index(self, key)
 end)))
 
@@ -8026,13 +11422,67 @@ local __namecall; __namecall = hookmetamethod(game, "__namecall", newcclosure(LP
 	if checkcaller() then return __namecall(self, ...) end
 	local args = {...}
 	local method = getnamecallmethod()
+
+	-- ── Bullet Teleport ──────────────────────────────────────
+	-- Флаг защиты от рекурсии: когда мы сами вызываем __namecall изнутри хука
+	if not getgenv().__bt_in_hook
+		and getgenv().__bt_enabled
+		and target_part and target_part.Parent then
+		local bt_get = getgenv().__bt_get_origin
+		if bt_get and (
+			method == "Raycast" or
+			method == "FindPartOnRay" or
+			method == "FindPartOnRayWithIgnoreList" or
+			method == "FindPartOnRayWithWhitelist"
+		) then
+			local firstArg = args[1]
+			local isShootRaycast = (method == "Raycast" and typeof(firstArg) == "Vector3")
+				or (method ~= "Raycast" and typeof(firstArg) == "Ray")
+
+			if isShootRaycast then
+				local ok2, newOrigin = pcall(bt_get, target_part)
+				if ok2 and newOrigin and typeof(newOrigin) == "Vector3" then
+					local targetPos = target_part.Position
+
+					getgenv().__bt_in_hook = true  -- блокируем рекурсию
+
+					if method == "Raycast" then
+						local dir = args[2]
+						local newDir = (targetPos - newOrigin)
+						if dir and typeof(dir) == "Vector3" and dir.Magnitude > 0 then
+							newDir = newDir.Unit * dir.Magnitude
+						end
+						local newArgs = {newOrigin, newDir}
+						for i = 3, #args do newArgs[i] = args[i] end
+						local result = __namecall(self, unpack(newArgs))
+						getgenv().__bt_in_hook = false
+						if result ~= nil then return result end
+						return __namecall(self, ...)
+					else
+						local ray = firstArg
+						if typeof(ray) == "Ray" then
+							local newArgs = {Ray.new(newOrigin, targetPos - newOrigin)}
+							for i = 2, #args do newArgs[i] = args[i] end
+							local inst, pos, norm, mat = __namecall(self, unpack(newArgs))
+							getgenv().__bt_in_hook = false
+							if inst ~= nil then return inst, pos, norm, mat end
+							return __namecall(self, ...)
+						end
+					end
+
+					getgenv().__bt_in_hook = false
+				end
+			end
+		end
+	end
+	-- ─────────────────────────────────────────────────────────
+
+	-- silent aim: работает когда выбран режим Silent и метод включён
 	if silent_methods[method] and aimbot_mode == "Silent" then
-		local hitpart = target_part
-		local traceback = debugtraceback()
-		if not (hitpart --[[and (global_vars.stack_check == "" or traceback and traceback:find(global_vars.stack_check))]]) then
+		local hitpart = target_part  -- атомарное чтение upvalue
+		if not hitpart or not hitpart.Parent then
 			return __namecall(self, ...)
 		end
-		print(traceback)
 
 		local hitsize = hitpart.Size
 		local orgpos = hitpart.Position
@@ -8045,16 +11495,17 @@ local __namecall; __namecall = hookmetamethod(game, "__namecall", newcclosure(LP
 		if method == "Raycast" then
 			local origin = args[1]
 			local direction = args[2]
-			local new_dir = silent_projectionoverride and (hitpos - origin) or (hitpos - origin).Unit * direction.Magnitude
-			if silent_wallbang and new_dir.Magnitude >= direction.Magnitude then
-				return {
-					Instance = hitpart,
-					Position = silent_magicbullet and _Vector3new(0/0, 0/0, 0/0) or hitpos,
-					Distance = (hitpos - args[1]).Magnitude,
-					Normal = (hitpos - orgpos).Unit,
-					Material = hitpart.Material
-				}
+			-- Если wallbang включён — используем Manipulation для поиска свободного origin
+			if silent_wallbang then
+				local newOrigin, newDir, ok = Manipulation.ManipulateRay(origin, direction, hitpart)
+				if ok then
+					args[1] = newOrigin
+					args[2] = newDir
+					return __namecall(self, unpack(args))
+				end
 			end
+			local to_target = hitpos - origin
+			local new_dir = to_target.Unit * direction.Magnitude
 			args[2] = new_dir
 			return __namecall(self, unpack(args))
 		end
@@ -8065,11 +11516,10 @@ local __namecall; __namecall = hookmetamethod(game, "__namecall", newcclosure(LP
 			local direction = ray.Direction
 			local new_dir = silent_projectionoverride and (hitpos - origin) or (hitpos - origin).Unit * direction.Magnitude
 			if silent_wallbang and new_dir.Magnitude >= direction.Magnitude then
-				local new_origin = (hitpart.CFrame * CFrame.new(0, hitpart.Size.Y, 0)).Position
-				return Ray.new(
-					(hitpart.CFrame * CFrame.new(0, hitpart.Size.Y, 0)).Position,
-					hitpos - new_origin
-				)
+				-- Используем Manipulation для поиска реальной свободной точки
+				local solvedOrigin = Manipulation.SolveOrigin(hitpart)
+				local new_origin = solvedOrigin or (hitpart.CFrame * CFrame.new(0, hitpart.Size.Y, 0)).Position
+				return Ray.new(new_origin, hitpos - new_origin)
 			end
 			return Ray.new(origin, new_dir)
 		end
@@ -8079,6 +11529,13 @@ local __namecall; __namecall = hookmetamethod(game, "__namecall", newcclosure(LP
 		local direction = ray.Direction
 		local new_dir = silent_projectionoverride and (hitpos - origin) or (hitpos - origin).Unit * direction.Magnitude
 		if silent_wallbang and new_dir.Magnitude >= direction.Magnitude then
+			-- Используем Manipulation для wallbang через FindPartOnRay
+			local solvedOrigin = Manipulation.SolveOrigin(hitpart)
+			if solvedOrigin then
+				local solved_dir = hitpos - solvedOrigin
+				args[1] = Ray.new(solvedOrigin, solved_dir)
+				return __namecall(self, unpack(args))
+			end
 			return hitpart, silent_magicbullet and _Vector3new(0/0, 0/0, 0/0) or hitpos, (hitpos - orgpos).Unit, hitpart.Material
 		end
 		args[1] = Ray.new(origin, new_dir)
