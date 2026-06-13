@@ -41,22 +41,26 @@ if not LPH_OBFUSCATED then
 	SWG_IsLifetime = true
 end;
 
--- ---- adonis bypass ----
-do -- fuckass adonis bypass :heart:
-	for _, v in getgc(true) do
-		if type(v) == "table" then
-			local namecallInstance = rawget(v, "namecallInstance")
-			-- god forgive me
-			if not (namecallInstance and type(namecallInstance) == "table" and type(namecallInstance[1]) == "string" and type(namecallInstance[2]) == "function") then
-				continue
-			end
+-- ---- adonis ----
+-- ---- adonis ----
+do
+    for _, v in getgc(true) do
+        if type(v) ~= "table" then continue end
 
-			setreadonly(v, false)
-			for caller, tbl in v do
-				v[caller] = {"kick", function(...) return coroutine.yield() end}
-			end
-		end
-	end
+        local namecallInstance = rawget(v, "namecallInstance")
+        if not (
+            namecallInstance
+            and type(namecallInstance) == "table"
+            and type(namecallInstance[1]) == "string"
+            and type(namecallInstance[2]) == "function"
+        ) then continue end
+
+        setreadonly(v, false)
+        v["namecallInstance"] = {"kick", function(...)
+            return coroutine.yield()
+        end}
+        
+    end
 end
 
 -- ---- folders ----
@@ -8114,7 +8118,7 @@ local silent_methods = {
 	["ViewportPointToRay"]         = false,
 	["Mouse"]                      = false,  -- Mouse.Hit / Mouse.Target
 	["Ray"]                        = false,  -- устаревший Ray API
-	["Camera"]                     = false,  -- Camera.CoordinateFrame спуфинг
+	-- Camera полностью убрана — она превращает silent в aimlock
 }
 
 -- =====================================================================
@@ -8136,9 +8140,11 @@ local function run_autodetect(duration)
 
 	Library.Notification("Scanning methods ("..duration.."s)... shoot your weapon!", duration + 1, Color3.fromRGB(255, 200, 80))
 
-	-- На время сканирования включаем ВСЕ методы (чтобы __namecall хук ловил)
+	-- На время сканирования включаем ВСЕ методы КРОМЕ Camera
 	for m in silent_methods do
-		silent_methods[m] = true
+		if m ~= "Camera" then
+			silent_methods[m] = true
+		end
 	end
 
 	-- Шпионские хуки на функции workspace / Camera
@@ -8193,14 +8199,14 @@ local function run_autodetect(duration)
 			end
 		end
 
+		-- Для Counter Blox принудительно включаем Mouse + Raycast
+		silent_methods["Mouse"] = true
+		silent_methods["Raycast"] = true
+
 		if found_any then
-			Library.Notification("Auto-detect: " .. table.concat(result_parts, ", "), 6, Color3.fromRGB(100, 255, 100))
+			Library.Notification("Silent ready: " .. table.concat(result_parts, ", "), 6, Color3.fromRGB(100, 255, 100))
 		else
-			-- Фоллбэк: включаем все
-			for m in silent_methods do
-				silent_methods[m] = true
-			end
-			Library.Notification("No methods detected — enabled ALL as fallback. Try shooting during scan!", 6, Color3.fromRGB(255, 150, 80))
+			Library.Notification("Using Mouse + Raycast (Counter Blox optimized)", 6, Color3.fromRGB(100, 255, 100))
 		end
 
 		autodetect_running = false
@@ -11237,13 +11243,8 @@ local __index; __index = hookmetamethod(game, '__index', newcclosure(LPH_NO_VIRT
 		return __index(self, key)
 	end
 
-	-- ===== Camera.CoordinateFrame spoofing =====
-	if key == "CoordinateFrame" then
-		if self == Camera and silent_methods["Camera"] and aimbot_mode == "Silent"
-			and target_part and target_part.Parent then
-			local real_cf = __index(self, "CFrame")
-			return _CFramenew(real_cf.Position, target_part.Position)
-		end
+	-- Camera spoofing полностью отключён (чтобы не было aimlock)
+	if key == "CoordinateFrame" and self == Camera then
 		return __index(self, key)
 	end
 
